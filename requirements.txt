@@ -1,0 +1,16 @@
+demucs
+openai-whisper
+flask
+flask-cors
+mir_eval
+librosa
+soundfile
+numpy
+pandas
+matplotlib
+scipy
+tqdm
+ffmpeg-python
+jiwer
+torchcodec
+imageio-ffmpeg
