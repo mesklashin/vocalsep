@@ -1,6 +1,9 @@
 import os
 import uuid
+import json
+import shutil
 import threading
+import datetime
 import logging
 import zipfile
 from flask import Flask, request, jsonify, render_template, send_file
@@ -29,10 +32,53 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB for batch uploads
 
 tasks = {}
 
-YTDLP = r"C:\Users\adaml\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\Scripts\yt-dlp.exe"
+# ---------------------------------------------------------------------------
+# Separation history (saved to disk so it survives "New Track" clicks AND
+# restarts). Everything here is wrapped in try/except so that a problem with
+# the history can never break separation, playback, or the rest of the app.
+# ---------------------------------------------------------------------------
+HISTORY_FILE = config.RESULTS_DIR / "history.json"
+HISTORY_MAX  = 200
+_history_lock = threading.Lock()
+
+
+def load_history():
+    """Return the list of saved jobs (most recent first). Never raises."""
+    try:
+        if HISTORY_FILE.exists():
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning(f"Could not read history: {e}")
+    return []
+
+
+def save_history(record):
+    """Append one completed job to the history file. Never raises."""
+    try:
+        with _history_lock:
+            history = []
+            if HISTORY_FILE.exists():
+                try:
+                    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                        history = json.load(f)
+                except Exception:
+                    history = []
+            history.append(record)
+            history = history[-HISTORY_MAX:]  # keep only the most recent
+            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+                json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.warning(f"Could not save history (separation still succeeded): {e}")
+
+
+# Find yt-dlp wherever it's installed on this machine's PATH.
+# Falls back to the bare command name if shutil.which misses it.
+# Only needed for the YouTube / playlist features.
+YTDLP = shutil.which("yt-dlp") or "yt-dlp"
 
 # ---------------------------------------------------------------------------
-# Model routing — maps model value → (engine, model_name)
+# Model routing - maps model value -> (engine, model_name)
 # ---------------------------------------------------------------------------
 MODEL_ROUTING = {
     # Demucs models
@@ -60,7 +106,7 @@ def resolve_engine_and_model(chosen_model: str, engine_hint: str = None):
     """
     chosen_model = chosen_model.strip()
 
-    # Direct lookup first — handles all known models including spleeter:Xstems
+    # Direct lookup first - handles all known models including spleeter:Xstems
     if chosen_model in MODEL_ROUTING:
         return MODEL_ROUTING[chosen_model]
 
@@ -122,7 +168,7 @@ def analyze_audio(audio_path) -> dict:
         return {}
 
 
-def run_separation(task_id, input_path, chosen_model, bit_depth=16, stems_filter=None, engine_hint=None):
+def run_separation(task_id, input_path, chosen_model, bit_depth=16, stems_filter=None, engine_hint=None, original_name=None):
     global transcriber
     try:
         engine, model_name = resolve_engine_and_model(chosen_model, engine_hint)
@@ -138,17 +184,37 @@ def run_separation(task_id, input_path, chosen_model, bit_depth=16, stems_filter
             rel = Path(abs_path_str).relative_to(config.SEPARATED_DATA_DIR)
             result_links[stem_name] = str(rel).replace(os.sep, "/")
 
+        # URL of the ORIGINAL uploaded/downloaded track, so the UI can play it
+        # with the "Play Song" button. The upload folder lives under static/.
+        original_url = None
+        try:
+            rel_orig = Path(input_path).resolve().relative_to(config.STATIC_DIR)
+            original_url = "/static/" + str(rel_orig).replace(os.sep, "/")
+        except Exception as e:
+            logger.warning(f"Could not build original audio URL: {e}")
+
         lyrics = []
         if 'vocals' in stems and os.path.exists(stems['vocals']):
             logger.info(f"Task {task_id}: Starting ASR...")
             if transcriber is None:
                 transcriber = WhisperTranscriber(model_name="small")
             raw = transcriber.transcribe(stems['vocals'])
-            lyrics = [l.get('text', str(l)) if isinstance(l, dict) else str(l) for l in raw]
+            # Keep the timestamps so the frontend can sync lyrics to playback.
+            lyrics = [
+                {
+                    'start': l.get('start', 0),
+                    'end':   l.get('end', 0),
+                    'text':  l.get('text', ''),
+                }
+                if isinstance(l, dict)
+                else {'start': 0, 'end': 0, 'text': str(l)}
+                for l in raw
+            ]
 
         tasks[task_id] = {
             'status':     'completed',
             'results':    result_links,
+            'original':   original_url,
             'lyrics':     lyrics,
             'filename':   Path(input_path).name,
             'engine':     engine,
@@ -158,17 +224,37 @@ def run_separation(task_id, input_path, chosen_model, bit_depth=16, stems_filter
         }
         logger.info(f"Task {task_id} completed.")
 
+        # Save to history (safe: never breaks the completed result)
+        save_history({
+            'id':         task_id,
+            'type':       'single',
+            'time':       datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            'title':      original_name or Path(input_path).name,
+            'engine':     engine,
+            'model':      separator.model,
+            'bit_depth':  bit_depth,
+            'results':    result_links,
+            'original':   original_url,
+            'lyrics':     lyrics,
+            'audio_info': audio_info,
+        })
+
     except Exception as e:
         logger.error(f"Task {task_id} failed: {e}", exc_info=True)
         tasks[task_id] = {'status': 'failed', 'error': str(e)}
 
 
 def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None):
+    global transcriber
     total = len(urls)
     completed_songs = []
 
     for i, (title, url) in enumerate(urls):
         song_id = str(uuid.uuid4())
+        # Force a single fixed output file. Using an explicit name (no %(title)s
+        # template) guarantees one song -> one mp3, even if the URL happens to
+        # still carry a playlist reference.
+        out_template = str(app.config['UPLOAD_FOLDER'] / song_id) + ".%(ext)s"
         filepath = app.config['UPLOAD_FOLDER'] / f"{song_id}.mp3"
 
         tasks[playlist_id]['current'] = i + 1
@@ -178,7 +264,8 @@ def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None
         try:
             logger.info(f"Playlist {playlist_id}: [{i+1}/{total}] {title}")
             cmd = [YTDLP, '-x', '--audio-format', 'mp3',
-                   '-o', str(filepath.with_suffix('')), url]
+                   '--no-playlist',           # treat the URL as a single video
+                   '-o', out_template, url]
             subprocess.run(cmd, check=True, capture_output=True)
 
             if not filepath.exists():
@@ -193,7 +280,26 @@ def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None
                 rel = Path(abs_path_str).relative_to(config.SEPARATED_DATA_DIR)
                 song_stems[stem_name] = str(rel).replace(os.sep, "/")
 
-            completed_songs.append({'title': title, 'stems': song_stems})
+            # Transcribe the vocal stem so each song gets a lyrics sheet,
+            # exactly like the file-upload batch path does.
+            lyrics_text = ""
+            if 'vocals' in stems and os.path.exists(stems['vocals']):
+                try:
+                    if transcriber is None:
+                        transcriber = WhisperTranscriber(model_name="small")
+                    raw = transcriber.transcribe(stems['vocals'])
+                    lyrics_text = "\n".join(
+                        (seg.get('text', '').strip() if isinstance(seg, dict) else str(seg))
+                        for seg in raw
+                    )
+                except Exception as e:
+                    logger.warning(f"Playlist lyrics failed for '{title}': {e}")
+
+            completed_songs.append({
+                'title':  title,
+                'stems':  song_stems,
+                'lyrics': lyrics_text,
+            })
             tasks[playlist_id]['completed_songs'] = completed_songs
 
         except Exception as e:
@@ -212,14 +318,31 @@ def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None
                     abs_path = config.SEPARATED_DATA_DIR / rel_path.replace("/", os.sep)
                     if abs_path.exists():
                         zf.write(abs_path, f"{folder}/{stem_name}.wav")
+                # Add a lyrics sheet for this song, if we have one
+                if song.get('lyrics'):
+                    zf.writestr(f"{folder}/lyrics.txt", song['lyrics'])
         tasks[playlist_id]['zip'] = str(playlist_id) + '_stems.zip'
     except Exception as e:
         logger.error(f"Zip failed: {e}")
 
     tasks[playlist_id]['status'] = 'completed'
 
+    engine, model_name = resolve_engine_and_model(chosen_model, engine_hint)
+    save_history({
+        'id':              playlist_id,
+        'type':            'playlist',
+        'time':            datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        'title':           f"Playlist ({len(completed_songs)} songs)",
+        'engine':          engine,
+        'model':           model_name,
+        'bit_depth':       bit_depth,
+        'completed_songs': completed_songs,
+        'zip':             tasks[playlist_id].get('zip'),
+    })
+
 
 def run_batch(batch_id, saved_files, chosen_model, bit_depth=16, stems_filter=None, engine_hint=None):
+    global transcriber
     total = len(saved_files)
     completed_songs = []
 
@@ -240,9 +363,24 @@ def run_batch(batch_id, saved_files, chosen_model, bit_depth=16, stems_filter=No
                 rel = Path(abs_path_str).relative_to(config.SEPARATED_DATA_DIR)
                 song_stems[stem_name] = str(rel).replace(os.sep, "/")
 
+            # Transcribe the vocal stem so each song gets a lyrics sheet
+            lyrics_text = ""
+            if 'vocals' in stems and os.path.exists(stems['vocals']):
+                try:
+                    if transcriber is None:
+                        transcriber = WhisperTranscriber(model_name="small")
+                    raw = transcriber.transcribe(stems['vocals'])
+                    lyrics_text = "\n".join(
+                        (seg.get('text', '').strip() if isinstance(seg, dict) else str(seg))
+                        for seg in raw
+                    )
+                except Exception as e:
+                    logger.warning(f"Batch lyrics failed for '{original_name}': {e}")
+
             completed_songs.append({
-                'title': Path(original_name).stem,
-                'stems': song_stems,
+                'title':  Path(original_name).stem,
+                'stems':  song_stems,
+                'lyrics': lyrics_text,
             })
 
         except Exception as e:
@@ -265,6 +403,9 @@ def run_batch(batch_id, saved_files, chosen_model, bit_depth=16, stems_filter=No
                     abs_path = config.SEPARATED_DATA_DIR / rel_path.replace("/", os.sep)
                     if abs_path.exists():
                         zf.write(abs_path, f"{folder}/{stem_name}.wav")
+                # Add a lyrics sheet for this song, if we have one
+                if song.get('lyrics'):
+                    zf.writestr(f"{folder}/lyrics.txt", song['lyrics'])
         tasks[batch_id]['zip'] = f"{batch_id}_stems.zip"
         logger.info(f"Batch {batch_id}: ZIP created.")
     except Exception as e:
@@ -272,6 +413,19 @@ def run_batch(batch_id, saved_files, chosen_model, bit_depth=16, stems_filter=No
 
     tasks[batch_id]['status'] = 'completed'
     logger.info(f"Batch {batch_id}: All done! {len(completed_songs)}/{total} files.")
+
+    engine, model_name = resolve_engine_and_model(chosen_model, engine_hint)
+    save_history({
+        'id':              batch_id,
+        'type':            'batch',
+        'time':            datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        'title':           f"Batch ({len(completed_songs)} files)",
+        'engine':          engine,
+        'model':           model_name,
+        'bit_depth':       bit_depth,
+        'completed_songs': completed_songs,
+        'zip':             tasks[batch_id].get('zip'),
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +446,7 @@ def upload_file():
         return jsonify({'error': 'No file selected.'}), 400
 
     chosen_model = request.form.get('model', 'htdemucs_ft')
-    engine_hint  = request.form.get('engine', None)   # ← NEW: read engine from frontend
+    engine_hint  = request.form.get('engine', None)   # read engine from frontend
     bit_depth    = int(request.form.get('bit_depth', 16))
     stems_filter = request.form.getlist('stems')
     if not stems_filter:
@@ -300,6 +454,7 @@ def upload_file():
 
     task_id  = str(uuid.uuid4())
     ext      = Path(file.filename).suffix
+    original_name = file.filename
     filepath = app.config['UPLOAD_FOLDER'] / f"{task_id}{ext}"
 
     try:
@@ -307,7 +462,7 @@ def upload_file():
         tasks[task_id] = {'status': 'processing'}
         threading.Thread(
             target=run_separation,
-            args=(task_id, filepath, chosen_model, bit_depth, stems_filter, engine_hint),
+            args=(task_id, filepath, chosen_model, bit_depth, stems_filter, engine_hint, original_name),
             daemon=True
         ).start()
         return jsonify({'task_id': task_id, 'status': 'processing'})
@@ -323,7 +478,7 @@ def handle_youtube():
 
     url          = data['url']
     chosen_model = data.get('model', 'htdemucs_ft')
-    engine_hint  = data.get('engine', None)            # ← NEW
+    engine_hint  = data.get('engine', None)
     bit_depth    = int(data.get('bit_depth', 16))
     stems_filter = data.get('stems', None)
     task_id      = str(uuid.uuid4())
@@ -331,8 +486,11 @@ def handle_youtube():
 
     try:
         tasks[task_id] = {'status': 'processing'}
+        out_template = str(app.config['UPLOAD_FOLDER'] / task_id) + ".%(ext)s"
         cmd = [YTDLP, '-x', '--audio-format', 'mp3',
-               '-o', str(filepath.with_suffix('')), url]
+               '--no-playlist',            # if a playlist URL is pasted here,
+                                           # just take the single video
+               '-o', out_template, url]
         subprocess.run(cmd, check=True)
         if not filepath.exists():
             raise FileNotFoundError("Download failed.")
@@ -346,43 +504,82 @@ def handle_youtube():
         return jsonify({'error': str(e)}), 500
 
 
+def expand_links(raw_text):
+    """
+    Take whatever the user pasted - any mix of single videos and playlist
+    links, one per line (or separated by spaces) - and expand it into one
+    flat list of (title, video_url) entries.
+
+    A single video resolves to one entry; a playlist resolves to all of its
+    videos. Everything is concatenated into a single master list, so you can
+    paste 1 video + 2 playlists + another video and they all get processed
+    one after another.
+    """
+    # Split on newlines AND whitespace, so pasting links on one line still works
+    candidates = []
+    for line in raw_text.replace('\r', '\n').split('\n'):
+        for piece in line.split():
+            piece = piece.strip()
+            if piece:
+                candidates.append(piece)
+
+    songs = []
+    seen_urls = set()
+    for link in candidates:
+        try:
+            result = subprocess.run(
+                [YTDLP, '--flat-playlist', '--print', '%(title)s\t%(url)s', link],
+                capture_output=True, text=True, check=True
+            )
+            for out_line in result.stdout.strip().split('\n'):
+                if '\t' in out_line:
+                    title, video_url = out_line.split('\t', 1)
+                    title = title.strip()
+                    video_url = video_url.strip()
+                    if video_url and video_url not in seen_urls:
+                        seen_urls.add(video_url)
+                        songs.append((title, video_url))
+        except subprocess.CalledProcessError as e:
+            # One bad link shouldn't sink the whole list - skip it and go on.
+            logger.warning(f"Could not read link '{link}': {e}")
+            continue
+    return songs
+
+
 @app.route('/playlist', methods=['POST'])
 def handle_playlist():
     data = request.get_json()
-    if not data or 'url' not in data:
-        return jsonify({'error': 'No URL provided.'}), 400
+    if not data:
+        return jsonify({'error': 'No data provided.'}), 400
 
-    url          = data['url']
+    # Accept either 'urls' (preferred, the new multi-line box) or 'url'
+    # (kept for backwards compatibility with the old single-link box).
+    raw_text = data.get('urls') or data.get('url') or ''
+    raw_text = raw_text.strip()
+    if not raw_text:
+        return jsonify({'error': 'No links provided.'}), 400
+
     chosen_model = data.get('model', 'htdemucs_ft')
-    engine_hint  = data.get('engine', None)            # ← NEW
+    engine_hint  = data.get('engine', None)
     bit_depth    = int(data.get('bit_depth', 16))
     playlist_id  = str(uuid.uuid4())
 
     try:
-        result = subprocess.run(
-            [YTDLP, '--flat-playlist', '--print', '%(title)s\t%(url)s', url],
-            capture_output=True, text=True, check=True
-        )
-        urls = []
-        for line in result.stdout.strip().split('\n'):
-            if '\t' in line:
-                title, video_url = line.split('\t', 1)
-                urls.append((title.strip(), video_url.strip()))
-
-        if not urls:
-            return jsonify({'error': 'No songs found.'}), 400
+        songs = expand_links(raw_text)
+        if not songs:
+            return jsonify({'error': 'No songs found in those links.'}), 400
 
         tasks[playlist_id] = {
             'status': 'processing', 'type': 'playlist',
-            'total': len(urls), 'current': 0,
+            'total': len(songs), 'current': 0,
             'current_title': '', 'completed_songs': [], 'zip': None,
         }
         threading.Thread(
             target=run_playlist,
-            args=(playlist_id, urls, chosen_model, bit_depth, engine_hint),
+            args=(playlist_id, songs, chosen_model, bit_depth, engine_hint),
             daemon=True
         ).start()
-        return jsonify({'task_id': playlist_id, 'status': 'processing', 'total': len(urls)})
+        return jsonify({'task_id': playlist_id, 'status': 'processing', 'total': len(songs)})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -398,7 +595,7 @@ def handle_batch():
         return jsonify({'error': 'No files selected.'}), 400
 
     chosen_model = request.form.get('model', 'htdemucs_ft')
-    engine_hint  = request.form.get('engine', None)    # ← NEW
+    engine_hint  = request.form.get('engine', None)
     bit_depth    = int(request.form.get('bit_depth', 16))
     stems_filter = request.form.getlist('stems')
     if not stems_filter:
@@ -442,11 +639,95 @@ def handle_batch():
     })
 
 
+# ---------------------------------------------------------------------------
+# Sequential batch (upload one file at a time, then process). This is the
+# robust path for large albums: no single huge upload, so 50+ songs work.
+# ---------------------------------------------------------------------------
+
+@app.route('/batch/start', methods=['POST'])
+def batch_start():
+    data = request.get_json(silent=True) or {}
+    batch_id = str(uuid.uuid4())
+    tasks[batch_id] = {
+        'status':          'uploading',
+        'type':            'batch',
+        'total':           int(data.get('total', 0)),
+        'current':         0,
+        'current_title':   '',
+        'completed_songs': [],
+        'zip':             None,
+        'engine':          data.get('engine'),
+        'model':           data.get('model', 'htdemucs_ft'),
+        'bit_depth':       int(data.get('bit_depth', 16)),
+        'stems':           data.get('stems') or None,
+        '_pending':        [],   # list of (original_name, filepath)
+    }
+    return jsonify({'batch_id': batch_id})
+
+
+@app.route('/batch/file', methods=['POST'])
+def batch_file():
+    batch_id = request.form.get('batch_id')
+    if not batch_id or batch_id not in tasks:
+        return jsonify({'error': 'Unknown batch session.'}), 400
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file in request.'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'Empty filename.'}), 400
+
+    try:
+        ext      = Path(file.filename).suffix
+        filename = f"{uuid.uuid4()}{ext}"
+        filepath = app.config['UPLOAD_FOLDER'] / filename
+        file.save(filepath)
+        tasks[batch_id]['_pending'].append((file.filename, filepath))
+        return jsonify({'received': len(tasks[batch_id]['_pending'])})
+    except Exception as e:
+        logger.error(f"Batch file save failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/batch/finish', methods=['POST'])
+def batch_finish():
+    data = request.get_json(silent=True) or {}
+    batch_id = data.get('batch_id')
+    if not batch_id or batch_id not in tasks:
+        return jsonify({'error': 'Unknown batch session.'}), 400
+
+    t = tasks[batch_id]
+    saved_files = t.get('_pending', [])
+    if not saved_files:
+        return jsonify({'error': 'No files were uploaded.'}), 400
+
+    t['status'] = 'processing'
+    t['total']  = len(saved_files)
+
+    threading.Thread(
+        target=run_batch,
+        args=(batch_id, saved_files, t.get('model', 'htdemucs_ft'),
+              t.get('bit_depth', 16), t.get('stems'), t.get('engine')),
+        daemon=True
+    ).start()
+
+    return jsonify({'task_id': batch_id, 'status': 'processing', 'total': len(saved_files)})
+
+
 @app.route('/status/<task_id>')
 def get_status(task_id):
     if task_id not in tasks:
         return jsonify({'error': 'Task not found.'}), 404
-    return jsonify(tasks[task_id])
+    # Don't expose internal keys (e.g. _pending holds non-serialisable paths)
+    public = {k: v for k, v in tasks[task_id].items() if not k.startswith('_')}
+    return jsonify(public)
+
+
+@app.route('/history')
+def get_history():
+    """Return saved separations, most recent first. Never errors out."""
+    history = load_history()
+    return jsonify(list(reversed(history)))
 
 
 @app.route('/download/<path:filename>')

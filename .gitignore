@@ -10,3 +10,5 @@ My_songs/
 *.wav 
 *.mp3 
 app/static/uploads/ 
+venv/
+venv310/
