@@ -1018,9 +1018,23 @@
             card.innerHTML =
                 '<h3>' + (rec.type === 'single' ? '&#127925; ' : '&#128193; ') + (rec.title || 'Untitled') + '</h3>' +
                 '<p class="subtitle" style="margin:.2rem 0 .6rem">' + sub + '</p>' +
-                '<button class="playlist-stem-link" style="border:none;cursor:pointer" onclick="openHistory(' + idx + ')">&#9654; Open</button>';
+                '<button class="playlist-stem-link" style="border:none;cursor:pointer" onclick="openHistory(' + idx + ')">&#9654; Open</button> ' +
+                '<button class="playlist-stem-link" style="border:none;cursor:pointer;background:rgba(252,129,129,.15);color:#fc8181" onclick="deleteHistory(' + idx + ')">&#128465; Delete</button>';
             list.appendChild(card);
         });
+    }
+
+    function deleteHistory(idx) {
+        const rec = (window._historyItems || [])[idx];
+        if (!rec || !rec.id) return;
+        if (!confirm('Delete "' + (rec.title || 'this item') + '" and its separated files?')) return;
+        fetch('/history/' + rec.id, { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { alert(data.error); return; }
+                showHistory();
+            })
+            .catch(err => alert('Delete error: ' + err));
     }
 
     function openHistory(idx) {

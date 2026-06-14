@@ -100,6 +100,48 @@ def save_history(record):
         logger.warning(f"Could not save history (separation still succeeded): {e}")
 
 
+def _delete_rel_file(rel_path, base_dir):
+    """Delete a file given a path relative to base_dir, never raising."""
+    try:
+        full_path = (base_dir / rel_path.replace("/", os.sep)).resolve()
+        if base_dir.resolve() in full_path.parents and full_path.exists():
+            full_path.unlink()
+    except Exception as e:
+        logger.warning(f"Could not delete '{rel_path}': {e}")
+
+
+def delete_history_entry(record_id):
+    """
+    Remove a history record and delete the audio files it references
+    (separated stems, original upload, zip). Returns True if a matching
+    record was found and removed.
+    """
+    with _history_lock:
+        history = load_history()
+        record = next((r for r in history if r.get('id') == record_id), None)
+        if record is None:
+            return False
+        history = [r for r in history if r.get('id') != record_id]
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+
+    if record.get('type') == 'single':
+        for rel in record.get('results', {}).values():
+            _delete_rel_file(rel, config.SEPARATED_DATA_DIR)
+        original = record.get('original') or ''
+        if original.startswith('/static/'):
+            _delete_rel_file(original[len('/static/'):], config.STATIC_DIR)
+    else:
+        for song in record.get('completed_songs', []):
+            for rel in song.get('stems', {}).values():
+                _delete_rel_file(rel, config.SEPARATED_DATA_DIR)
+        zip_name = record.get('zip')
+        if zip_name:
+            _delete_rel_file(zip_name, config.UPLOAD_FOLDER)
+
+    return True
+
+
 # Find yt-dlp: prefer the copy installed alongside this Python interpreter
 # (e.g. venv/Scripts/yt-dlp.exe from `pip install yt-dlp`), then fall back to
 # PATH, then the bare command name. Only needed for the YouTube / playlist
@@ -808,6 +850,16 @@ def get_history():
     """Return saved separations, most recent first. Never errors out."""
     history = load_history()
     return jsonify(list(reversed(history)))
+
+
+@app.route('/history/<record_id>', methods=['DELETE'])
+def delete_history(record_id):
+    try:
+        if not delete_history_entry(record_id):
+            return jsonify({'error': 'History entry not found.'}), 404
+        return jsonify({'status': 'deleted'})
+    except Exception as e:
+        return jsonify({'error': friendly_error(e)}), 500
 
 
 @app.route('/download/<path:filename>')
