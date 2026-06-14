@@ -32,6 +32,34 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB for batch uploads
 
 tasks = {}
 
+
+def friendly_error(e):
+    """
+    Turn a raw exception into a short, user-facing message.
+
+    Long technical messages (CUDA tracebacks, ffmpeg errors, etc.) are
+    confusing in a browser alert, so common cases are mapped to plain
+    explanations. Anything unrecognized falls back to a trimmed version of
+    the original message.
+    """
+    msg = str(e)
+
+    if "out of memory" in msg.lower() or "CUDA error" in msg:
+        return ("Your GPU ran out of memory while processing this audio. "
+                "Try a shorter file, a lower bit depth, or restart the app "
+                "to free up GPU memory.")
+    if "ffmpeg" in msg.lower() and ("not found" in msg.lower() or "No such file" in msg):
+        return "ffmpeg could not be found. Please check your installation (see README)."
+    if isinstance(e, FileNotFoundError):
+        return "A required file could not be found or downloaded."
+
+    # Trim very long technical messages so the alert stays readable
+    first_line = msg.strip().splitlines()[0] if msg.strip() else "An unexpected error occurred."
+    if len(first_line) > 200:
+        first_line = first_line[:200] + "..."
+    return first_line
+
+
 # ---------------------------------------------------------------------------
 # Separation history (saved to disk so it survives "New Track" clicks AND
 # restarts). Everything here is wrapped in try/except so that a problem with
@@ -246,7 +274,7 @@ def run_separation(task_id, input_path, chosen_model, bit_depth=16, stems_filter
 
     except Exception as e:
         logger.error(f"Task {task_id} failed: {e}", exc_info=True)
-        tasks[task_id] = {'status': 'failed', 'error': str(e)}
+        tasks[task_id] = {'status': 'failed', 'error': friendly_error(e)}
 
 
 def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None):
@@ -323,7 +351,7 @@ def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None
 
         except Exception as e:
             logger.error(f"Playlist failed on '{title}': {e}")
-            completed_songs.append({'title': title, 'error': str(e)})
+            completed_songs.append({'title': title, 'error': friendly_error(e)})
             tasks[playlist_id]['completed_songs'] = completed_songs
 
     try:
@@ -413,7 +441,7 @@ def run_batch(batch_id, saved_files, chosen_model, bit_depth=16, stems_filter=No
             logger.error(f"Batch failed on '{original_name}': {e}")
             completed_songs.append({
                 'title': Path(original_name).stem,
-                'error': str(e),
+                'error': friendly_error(e),
             })
 
         tasks[batch_id]['completed_songs'] = completed_songs
@@ -493,7 +521,7 @@ def upload_file():
         ).start()
         return jsonify({'task_id': task_id, 'status': 'processing'})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': friendly_error(e)}), 500
 
 
 @app.route('/youtube', methods=['POST'])
@@ -534,7 +562,7 @@ def handle_youtube():
         ).start()
         return jsonify({'task_id': task_id, 'status': 'processing'})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': friendly_error(e)}), 500
 
 
 def expand_links(raw_text):
@@ -616,7 +644,7 @@ def handle_playlist():
         return jsonify({'task_id': playlist_id, 'status': 'processing', 'total': len(songs)})
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': friendly_error(e)}), 500
 
 
 @app.route('/batch', methods=['POST'])
@@ -720,7 +748,7 @@ def batch_file():
         return jsonify({'received': len(tasks[batch_id]['_pending'])})
     except Exception as e:
         logger.error(f"Batch file save failed: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': friendly_error(e)}), 500
 
 
 @app.route('/batch/finish', methods=['POST'])
