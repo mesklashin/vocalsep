@@ -1,0 +1,22 @@
+demucs
+openunmix
+openai-whisper
+flask
+flask-cors
+mir_eval
+librosa
+soundfile
+numpy
+pandas
+matplotlib
+scipy
+tqdm
+ffmpeg-python
+jiwer
+torchcodec
+imageio-ffmpeg
+yt-dlp
+lyricsgenius
+
+# Spleeter requires a separate Python 3.8 environment (see docs/demucs_model_comparison.md)
+# spleeter

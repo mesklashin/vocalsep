@@ -1,0 +1,14 @@
+data/ 
+pretrained_models/ 
+My_songs/ 
+__pycache__/ 
+*.pyc 
+spleeter-env7/ 
+data/ 
+pretrained_models/ 
+My_songs/ 
+*.wav 
+*.mp3 
+app/static/uploads/ 
+venv/
+venv310/

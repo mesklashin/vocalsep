@@ -1,0 +1,1253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VocalSep | French Rap AI Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        .engine-selector { margin-top: 1.6rem; text-align: left; }
+        .engine-selector label { display: block; font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim, #888); margin-bottom: .6rem; }
+        .engine-tabs { display: flex; gap: .5rem; flex-wrap: wrap; }
+        .engine-tab { flex: 1; min-width: 100px; padding: .65rem 1rem; border: 1.5px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(255,255,255,.04); color: var(--text-dim, #aaa); font-family: 'Outfit', sans-serif; font-size: .85rem; font-weight: 600; cursor: pointer; transition: all .2s ease; text-align: center; }
+        .engine-tab:hover { border-color: rgba(255,255,255,.3); color: #fff; background: rgba(255,255,255,.08); }
+        .engine-tab.active { border-color: var(--accent, #9d7bff); background: rgba(157,123,255,.15); color: #fff; }
+        .engine-tab .tab-icon { font-size: 1.1rem; display: block; margin-bottom: .2rem; }
+        .engine-tab .tab-name { display: block; font-size: .8rem; }
+        .engine-tab .tab-hint { display: block; font-size: .65rem; font-weight: 400; opacity: .6; margin-top: .15rem; }
+        .model-selector { margin-top: .9rem; overflow: hidden; max-height: 0; opacity: 0; transition: max-height .35s ease, opacity .25s ease; }
+        .model-selector.visible { max-height: 80px; opacity: 1; }
+        .model-selector select { width: 100%; padding: .55rem .9rem; border: 1.5px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(255,255,255,.05); color: #fff; font-family: 'Outfit', sans-serif; font-size: .85rem; appearance: none; cursor: pointer; outline: none; transition: border-color .2s; }
+        .model-selector select:focus { border-color: var(--accent, #9d7bff); }
+        .model-selector select option { background: #1a1a2e; color: #fff; }
+        .engine-badge { display: inline-block; padding: .2rem .6rem; border-radius: 20px; font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-left: .5rem; vertical-align: middle; }
+        .badge-demucs    { background: rgba(99,179,237,.2);  color: #63b3ed; }
+        .badge-openunmix { background: rgba(246,173,85,.2);  color: #f6ad55; }
+        .badge-spleeter  { background: rgba(104,211,145,.2); color: #68d391; }
+        .input-tabs { display: flex; gap: .5rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+        .input-tab { flex: 1; padding: .5rem 1rem; border: 1.5px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(255,255,255,.04); color: var(--text-dim, #aaa); font-family: 'Outfit', sans-serif; font-size: .85rem; font-weight: 600; cursor: pointer; transition: all .2s; min-width: 90px; }
+        .input-tab.active { border-color: var(--accent, #9d7bff); background: rgba(157,123,255,.15); color: #fff; }
+        .youtube-container { display: none; flex-direction: column; align-items: center; gap: 1rem; width: 100%; }
+        .youtube-container.visible { display: flex; }
+        .youtube-input-row { display: flex; gap: .6rem; width: 100%; }
+        .youtube-input { flex: 1; padding: .65rem 1rem; border: 1.5px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(255,255,255,.05); color: #fff; font-family: 'Outfit', sans-serif; font-size: .9rem; outline: none; transition: border-color .2s; resize: vertical; min-height: 2.6rem; }
+        .youtube-input:focus { border-color: #ff4444; }
+        .youtube-input::placeholder { color: rgba(255,255,255,.3); }
+        .btn-youtube { padding: .65rem 1.2rem; border-radius: 10px; border: none; background: #ff4444; color: #fff; font-family: 'Outfit', sans-serif; font-size: .9rem; font-weight: 700; cursor: pointer; transition: background .2s; white-space: nowrap; }
+        .btn-youtube:hover { background: #ff2222; }
+        .file-section { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+        .file-section.hidden { display: none; }
+        .param-btn { padding: .4rem .8rem; border-radius: 8px; border: 1.5px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); color: var(--text-dim, #aaa); font-family: 'Outfit', sans-serif; font-size: .8rem; font-weight: 600; cursor: pointer; transition: all .2s; }
+        .param-btn.active { border-color: var(--accent, #9d7bff); background: rgba(157,123,255,.15); color: #fff; }
+        .param-section { margin-top: 1.2rem; text-align: left; }
+        .param-section label { display: block; font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim, #888); margin-bottom: .6rem; }
+        .param-row { display: flex; gap: .8rem; flex-wrap: wrap; }
+        .param-group { flex: 1; min-width: 140px; }
+        .param-group label { font-size: .7rem; color: #888; display: block; margin-bottom: .4rem; }
+        .param-group .btn-row { display: flex; gap: .4rem; flex-wrap: wrap; }
+        .song-info-panel { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: .6rem; margin: 1rem 0; padding: 1rem; background: rgba(255,255,255,.03); border: 1.5px solid rgba(255,255,255,.08); border-radius: 12px; }
+        .song-info-item { text-align: center; }
+        .song-info-value { font-size: 1rem; font-weight: 700; color: #fff; }
+        .song-info-label { font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; color: #888; margin-top: .2rem; }
+        .stem-card { background: rgba(255,255,255,.03); border: 1.5px solid rgba(255,255,255,.08); border-radius: 12px; padding: 1rem; margin-bottom: .8rem; }
+        .stem-header { display: flex; align-items: center; gap: .6rem; margin-bottom: .8rem; }
+        .stem-icon { font-size: 1.2rem; }
+        .stem-name { font-size: 1rem; font-weight: 700; color: #fff; flex: 1; }
+        .btn-solo { padding: .3rem .7rem; border-radius: 6px; border: 1px solid rgba(157,123,255,.4); background: rgba(157,123,255,.15); color: #9d7bff; font-family: 'Outfit', sans-serif; font-size: .75rem; cursor: pointer; transition: all .2s; }
+        .btn-solo.playing { background: rgba(157,123,255,.4); color: #fff; border-color: #9d7bff; }
+        .btn-mute { padding: .3rem .7rem; border-radius: 6px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.05); color: #aaa; font-family: 'Outfit', sans-serif; font-size: .75rem; cursor: pointer; transition: all .2s; }
+        .btn-mute.muted { background: rgba(255,0,0,.15); color: #ff6b6b; border-color: #ff6b6b; }
+        .custom-player { display: flex; align-items: center; gap: .8rem; margin: .5rem 0; }
+        .progress-slider { flex: 1; height: 4px; cursor: pointer; accent-color: var(--accent, #9d7bff); }
+        .time-display { font-size: .75rem; color: #888; white-space: nowrap; min-width: 90px; text-align: right; }
+        .btn-download { display: inline-block; margin-top: .5rem; padding: .35rem .8rem; border-radius: 8px; background: rgba(99,179,237,.15); color: #63b3ed; font-size: .8rem; font-weight: 600; text-decoration: none; transition: background .2s; }
+        .btn-download:hover { background: rgba(99,179,237,.3); }
+        .playlist-progress { width: 100%; background: rgba(255,255,255,.04); border: 1.5px solid rgba(255,255,255,.1); border-radius: 12px; padding: 1.2rem; margin-top: 1rem; }
+        .playlist-progress h3 { margin: 0 0 .8rem; font-size: 1rem; color: #fff; }
+        .playlist-song-list { list-style: none; padding: 0; margin: 0; max-height: 300px; overflow-y: auto; }
+        .playlist-song-list li { display: flex; align-items: center; gap: .6rem; padding: .5rem .6rem; border-radius: 8px; font-size: .85rem; color: var(--text-dim, #aaa); transition: background .2s; }
+        .playlist-song-list li.done { color: #68d391; }
+        .playlist-song-list li.active { background: rgba(157,123,255,.1); color: #fff; }
+        .playlist-song-list li.error { color: #fc8181; }
+        .song-status-icon { font-size: 1rem; min-width: 1.2rem; }
+        .playlist-results { display: flex; flex-direction: column; gap: 1.2rem; }
+        .playlist-song-card { border: 1.5px solid rgba(255,255,255,.1); border-radius: 12px; padding: 1rem; background: rgba(255,255,255,.03); }
+        .playlist-song-card h3 { margin: 0 0 .8rem; font-size: .95rem; color: #fff; }
+        .playlist-song-stems { display: flex; flex-wrap: wrap; gap: .5rem; }
+        .playlist-stem-link { padding: .4rem .8rem; border-radius: 8px; background: rgba(99,179,237,.15); color: #63b3ed; font-size: .8rem; font-weight: 600; text-decoration: none; transition: background .2s; }
+        .playlist-stem-link:hover { background: rgba(99,179,237,.3); }
+        .btn-zip { display: inline-block; margin-top: 1rem; padding: .8rem 1.6rem; background: linear-gradient(135deg, #9d7bff, #63b3ed); color: #fff; border-radius: 12px; font-weight: 700; font-family: 'Outfit', sans-serif; font-size: 1rem; text-decoration: none; border: none; cursor: pointer; transition: opacity .2s; }
+        .btn-zip:hover { opacity: .85; }
+        .batch-file-item { display: flex; align-items: center; justify-content: space-between; padding: .4rem .6rem; border-radius: 8px; font-size: .82rem; background: rgba(255,255,255,.04); margin-bottom: .3rem; color: #ccc; }
+        .batch-file-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75%; }
+        .batch-count { margin-top: .6rem; font-size: .82rem; color: #9d7bff; font-weight: 600; text-align: center; }
+        .btn-batch-start { margin-top: .8rem; padding: .7rem 1.4rem; border-radius: 10px; border: none; background: #9d7bff; color: #fff; font-family: 'Outfit', sans-serif; font-size: .95rem; font-weight: 700; cursor: pointer; transition: background .2s; display: none; }
+        .btn-batch-start:hover { background: #7c5ce8; }
+
+        /* ---- Synced lyrics (Spotify-style) ---- */
+        .lyrics-scroll { max-height: 380px; overflow-y: auto; scroll-behavior: smooth; padding: .5rem 0; }
+        .lyric-line {
+            text-align: center;
+            color: rgba(255,255,255,.32);
+            font-size: 1rem;
+            line-height: 1.5;
+            padding: .45rem .5rem;
+            margin: 0;
+            transition: color .25s ease, font-size .25s ease, transform .25s ease, opacity .25s ease;
+        }
+        .lyric-line.active {
+            color: #fff;
+            font-weight: 700;
+            font-size: 1.25rem;
+            transform: scale(1.03);
+        }
+        .lyric-line.passed { opacity: .55; }
+    </style>
+</head>
+<body>
+    <div class="background-glow"></div>
+    <header>
+        <div class="logo">
+            <h1>Vocal<span>Sep</span>.</h1>
+            <p>French Rap Separation</p>
+        </div>
+    </header>
+
+    <main>
+        <section id="upload-section" class="card">
+            <div class="upload-container" id="drop-zone">
+                <div class="input-tabs">
+                    <button class="input-tab active" id="tab-file"    onclick="switchInput('file')">&#128193; Upload</button>
+                    <button class="input-tab"        id="tab-youtube" onclick="switchInput('youtube')">&#9654;&#65039; YouTube</button>
+                    <button class="input-tab"        id="tab-history" onclick="showHistory()">&#128336; History</button>
+                </div>
+
+                <div class="file-section" id="file-section">
+                    <div class="upload-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                        </svg>
+                    </div>
+                    <h2>Drop your songs or albums here</h2>
+                    <p>Drag in one or more <b>folders</b> &middot; MP3, WAV, FLAC</p>
+                    <input type="file" id="file-input" hidden accept=".mp3,.wav,.flac" multiple>
+                    <input type="file" id="folder-input" hidden webkitdirectory directory multiple>
+                    <div style="display:flex; gap:.6rem; flex-wrap:wrap; justify-content:center;">
+                        <button class="btn-primary" onclick="document.getElementById('file-input').click()">Select Songs</button>
+                        <button class="btn-primary" onclick="document.getElementById('folder-input').click()">Select Folder</button>
+                    </div>
+                    <p class="text-dim" style="font-size:.8rem; margin-top:.6rem;">
+                        <b>Tip:</b> pick (or drag in) the folder that holds <b>all your
+                        albums</b> &mdash; every track in every subfolder gets queued at
+                        once, like pasting a playlist link. You can also click
+                        <b>Select Folder</b> again to add more, and everything stays
+                        queued until you press Start.
+                    </p>
+                    <div id="upload-file-list" style="width:100%; max-height:220px; overflow-y:auto; margin-top:.6rem;"></div>
+                    <div style="display:flex; gap:.6rem; flex-wrap:wrap; justify-content:center;">
+                        <button class="btn-batch-start" id="upload-start-btn" onclick="handleBatch()">&#9654; Start Separation</button>
+                        <button class="btn-small" id="upload-clear-btn" style="display:none" onclick="clearBatchFiles()">&#10060; Clear All</button>
+                    </div>
+                </div>
+
+                <div class="youtube-container" id="youtube-section">
+                    <div class="upload-icon">&#127916;</div>
+                    <h2>Paste YouTube link(s)</h2>
+                    <p>One link per line &mdash; videos, playlists, or albums. Each link
+                       gets its own ZIP with vocals + lyrics.</p>
+                    <div class="youtube-input-row">
+                        <textarea class="youtube-input" id="youtube-url" rows="3" placeholder="youtube.com/watch?v=...&#10;youtube.com/playlist?list=...&#10;(one per line for multiple zips)"></textarea>
+                        <button class="btn-youtube" onclick="handleYoutube()">&#9654; Separate</button>
+                    </div>
+                </div>
+
+                <div class="param-section">
+                    <label>Output Parameters</label>
+                    <div class="param-row">
+                        <div class="param-group">
+                            <label>BIT DEPTH</label>
+                            <div class="btn-row">
+                                <button class="param-btn active" data-param="bit_depth" data-value="16" onclick="selectParam(this,'bit_depth')">16-bit</button>
+                                <button class="param-btn"        data-param="bit_depth" data-value="32" onclick="selectParam(this,'bit_depth')">32-bit</button>
+                            </div>
+                        </div>
+                        <div class="param-group">
+                            <label>STEMS TO SEPARATE</label>
+                            <div class="btn-row" id="stems-filter-btns">
+                                <button class="param-btn active" data-stem="vocals" onclick="toggleStem(this)">&#127908; Vocals</button>
+                                <button class="param-btn active" data-stem="drums"  onclick="toggleStem(this)">&#129345; Drums</button>
+                                <button class="param-btn active" data-stem="bass"   onclick="toggleStem(this)">&#127928; Bass</button>
+                                <button class="param-btn active" data-stem="other"  onclick="toggleStem(this)">&#127929; Other</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="engine-selector">
+                    <label>Separation Engine</label>
+                    <div class="engine-tabs">
+                        <button class="engine-tab active" data-engine="demucs">
+                            <span class="tab-icon">&#127907;</span>
+                            <span class="tab-name">Demucs</span>
+                            <span class="tab-hint">Best quality · HTDemucs</span>
+                        </button>
+                        <button class="engine-tab" data-engine="openunmix">
+                            <span class="tab-icon">&#128302;</span>
+                            <span class="tab-name">Open-Unmix</span>
+                            <span class="tab-hint">Research · UMX</span>
+                        </button>
+                        <button class="engine-tab" data-engine="spleeter">
+                            <span class="tab-icon">&#9986;&#65039;</span>
+                            <span class="tab-name">Spleeter</span>
+                            <span class="tab-hint">Fast · Deezer</span>
+                        </button>
+                    </div>
+                    <div class="model-selector visible" id="model-selector">
+                        <select id="model-select"></select>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="history-section" class="card hidden">
+            <header class="section-header">
+                <div class="header-left">
+                    <h2>Separation History</h2>
+                    <p class="subtitle">Your past separations are saved here &mdash; open any to re-download</p>
+                </div>
+                <div class="master-controls">
+                    <button class="btn-primary" onclick="hideHistory()">Back</button>
+                </div>
+            </header>
+            <div id="history-list" class="playlist-results">
+                <p class="text-dim">Loading history...</p>
+            </div>
+        </section>
+
+        <section id="processing-section" class="card hidden">
+            <div class="status-content">
+                <div class="spinner"></div>
+                <h2 id="status-text">Analyzing Frequencies...</h2>
+                <p id="engine-status-label">Isolating sources. This usually takes 2-5 minutes.</p>
+                <div class="progress-bar"><div id="progress-fill"></div></div>
+            </div>
+        </section>
+
+        <section id="playlist-processing-section" class="card hidden">
+            <div class="status-content">
+                <div class="spinner"></div>
+                <h2 id="playlist-status-text">Processing...</h2>
+                <p id="playlist-status-label">Working on it...</p>
+                <div class="progress-bar"><div id="playlist-progress-fill"></div></div>
+                <div class="playlist-progress">
+                    <h3 id="playlist-counter">0 / 0</h3>
+                    <ul class="playlist-song-list" id="playlist-song-list"></ul>
+                </div>
+                <button id="playlist-cancel-btn" class="btn-primary" onclick="cancelPlaylistTask()" style="margin-top:1rem;">Cancel</button>
+            </div>
+        </section>
+
+        <section id="player-section" class="card hidden">
+            <header class="section-header">
+                <div class="header-left">
+                    <h2>Separation Results <span id="result-engine-badge" class="engine-badge"></span></h2>
+                    <p class="subtitle" id="result-model-label">Vocals &amp; Music Mix</p>
+                </div>
+                <div class="master-controls">
+                    <button id="master-play" class="btn-primary main-btn" onclick="toggleMasterPlay()">
+                        <span class="icon">&#9654;</span> Play Song
+                    </button>
+                    <button class="btn-primary" onclick="resetApp()">New Track</button>
+                </div>
+            </header>
+            <div id="stems-container" class="stems-grid"></div>
+        </section>
+
+        <section id="playlist-results-section" class="card hidden">
+            <header class="section-header">
+                <div class="header-left">
+                    <h2 id="results-title">Results &#127881;</h2>
+                    <p class="subtitle" id="playlist-results-label"></p>
+                </div>
+                <div class="master-controls">
+                    <button class="btn-primary" onclick="resetApp()">New Session</button>
+                </div>
+            </header>
+            <div id="playlist-results-container" class="playlist-results"></div>
+            <div style="text-align:center; margin-top:1.5rem;">
+                <a id="zip-download-btn" class="btn-zip hidden" href="#">&#11015; Download All Stems (ZIP)</a>
+            </div>
+        </section>
+
+        <section id="lyrics-section" class="card hidden">
+            <header class="section-header">
+                <div class="header-left">
+                    <h2>AI Lyrics (French)</h2>
+                    <p class="subtitle">Whisper Transcription &middot; synced to playback</p>
+                </div>
+                <div class="master-controls">
+                    <button id="download-lyrics-btn" class="btn-primary" onclick="downloadLyrics()">&#11015; Download Lyrics</button>
+                </div>
+            </header>
+            <div id="lyrics-container" class="lyrics-scroll">
+                <p class="text-dim">Lyrics will appear here and follow the music as it plays...</p>
+            </div>
+        </section>
+    </main>
+
+    <footer><p>&copy; French Rap Vocal Separation Project</p></footer>
+
+    <script>
+    const ENGINE_MODELS = {
+        demucs: [
+            { value: 'htdemucs_ft', label: 'htdemucs_ft (default - fine-tuned)' },
+            { value: 'htdemucs',    label: 'htdemucs (standard)' },
+            { value: 'htdemucs_6s', label: 'htdemucs_6s (6 stems)' },
+            { value: 'mdx_extra',   label: 'mdx_extra (MDX)' },
+            { value: 'mdx_extra_q', label: 'mdx_extra_q (quantised)' },
+        ],
+        openunmix: [
+            { value: 'umxhq', label: 'umxhq - high quality (default)' },
+            { value: 'umxl',  label: 'umxl - best quality (larger)' },
+            { value: 'umx',   label: 'umx - standard' },
+        ],
+        spleeter: [
+            { value: 'spleeter:2stems', label: '2 stems - Vocals + Accompaniment (fastest)' },
+            { value: 'spleeter:4stems', label: '4 stems - Vocals, Drums, Bass, Other' },
+            { value: 'spleeter:5stems', label: '5 stems - Vocals, Drums, Bass, Piano, Other' },
+        ],
+    };
+
+    const ENGINE_HINTS = {
+        demucs:    'Demucs HTDemucs - best quality, GPU recommended',
+        openunmix: 'Open-Unmix (UMX) - open research model',
+        spleeter:  'Spleeter by Deezer - fast CPU separation',
+    };
+
+    const STEM_EMOJI = {
+        vocals: '&#127908;', drums: '&#129345;', bass: '&#127928;', other: '&#127929;',
+        piano: '&#127929;', guitar: '&#127928;', accompaniment: '&#127925;',
+    };
+
+    let selectedEngine    = 'demucs';
+    let currentTaskId     = null;
+    let pollInterval      = null;
+    let currentPlaylistId = null;
+    let selectedBitDepth  = 16;
+    let selectedStems     = ['vocals', 'drums', 'bass', 'other'];
+    let batchFiles        = [];
+
+    // --- Player / lyrics state ---
+    let stemAudios   = {};      // { stem: Audio }
+    let stemUrls     = {};      // { stem: url }
+    let originalAudio = null;   // the full original track (for "Play Song")
+    let masterFallback = false; // true if no original available (mix stems instead)
+    let mutedStems   = {};      // { stem: true/false }
+    let lyricsData   = [];      // [ { start, end, text } ]
+    let playMode     = 'none';  // 'none' | 'original' | <stem name>
+    let lyricTimer   = null;
+    let lastActiveIdx = -1;
+    let seeking      = false;
+
+    // Accepted audio file types (used by folder picker and drag-and-drop).
+    const AUDIO_RE = /\.(mp3|wav|flac)$/i;
+
+    // Recursively walk a dropped filesystem entry (file or directory) and push
+    // every File it contains into `out`. Lets users drop whole album folders.
+    function walkEntry(entry, out) {
+        return new Promise(resolve => {
+            if (!entry) return resolve();
+            if (entry.isFile) {
+                entry.file(f => { out.push(f); resolve(); }, () => resolve());
+            } else if (entry.isDirectory) {
+                const reader = entry.createReader();
+                const readBatch = () => {
+                    reader.readEntries(async batch => {
+                        if (!batch.length) return resolve();
+                        for (const child of batch) await walkEntry(child, out);
+                        readBatch();  // readEntries returns in chunks; keep going
+                    }, () => resolve());
+                };
+                readBatch();
+            } else {
+                resolve();
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.engine-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.engine-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                selectedEngine = tab.dataset.engine;
+                updateModelDropdown(selectedEngine);
+            });
+        });
+        document.getElementById('file-input').addEventListener('change', e => {
+            handleSelectedFiles(Array.from(e.target.files));
+            e.target.value = '';
+        });
+        document.getElementById('folder-input').addEventListener('change', e => {
+            // A folder pick returns everything inside (incl. sub-folders and
+            // non-audio files like cover art) — keep only audio tracks.
+            const audio = Array.from(e.target.files).filter(f => AUDIO_RE.test(f.name));
+            if (!audio.length) { alert('No MP3, WAV, or FLAC files found in that folder.'); return; }
+            handleSelectedFiles(audio);
+            e.target.value = '';
+        });
+        const zone = document.getElementById('drop-zone');
+        zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+        zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+        zone.addEventListener('drop', async e => {
+            e.preventDefault();
+            zone.classList.remove('drag-over');
+
+            // Drag-and-drop can include whole folders (whole albums), and even
+            // several folders at once. Walk every dropped item recursively and
+            // collect all the audio files inside, regardless of how deep they
+            // are nested. Falls back to a plain file list on old browsers.
+            const items = e.dataTransfer.items;
+            if (items && items.length && items[0].webkitGetAsEntry) {
+                const entries = [];
+                for (const it of items) {
+                    const entry = it.webkitGetAsEntry && it.webkitGetAsEntry();
+                    if (entry) entries.push(entry);
+                }
+                const files = [];
+                for (const entry of entries) await walkEntry(entry, files);
+                const audio = files.filter(f => AUDIO_RE.test(f.name));
+                if (!audio.length) { alert('No MP3, WAV, or FLAC files found in what you dropped.'); return; }
+                handleSelectedFiles(audio);
+            } else if (e.dataTransfer.files.length) {
+                handleSelectedFiles(Array.from(e.dataTransfer.files));
+            }
+        });
+        updateModelDropdown('demucs');
+    });
+
+    function switchInput(type) {
+        ['file','youtube'].forEach(t => {
+            document.getElementById('tab-' + t).classList.toggle('active', t === type);
+        });
+        document.getElementById('file-section').classList.toggle('hidden',   type !== 'file');
+        document.getElementById('youtube-section').classList.toggle('visible', type === 'youtube');
+    }
+
+    // One file (first selection, nothing queued yet) -> single track (full
+    // player + lyrics). Anything else -> add to the batch queue, so users can
+    // pick several albums one folder at a time (or drop them all at once).
+    function handleSelectedFiles(files) {
+        if (!files.length) return;
+        if (files.length === 1 && batchFiles.length === 0) {
+            handleFile(files[0]);
+            return;
+        }
+        // De-dupe against what's already queued (same name + size + folder).
+        const existingKeys = new Set(batchFiles.map(f => f.webkitRelativePath + '|' + f.name + '|' + f.size));
+        for (const f of files) {
+            const key = f.webkitRelativePath + '|' + f.name + '|' + f.size;
+            if (!existingKeys.has(key)) {
+                batchFiles.push(f);
+                existingKeys.add(key);
+            }
+        }
+        renderBatchFileList();
+    }
+
+    function renderBatchFileList() {
+        const list  = document.getElementById('upload-file-list');
+        const btn   = document.getElementById('upload-start-btn');
+        const clear = document.getElementById('upload-clear-btn');
+        list.innerHTML = '';
+        if (!batchFiles.length) {
+            btn.style.display = 'none';
+            clear.style.display = 'none';
+            return;
+        }
+        batchFiles.forEach((f, idx) => {
+            const div = document.createElement('div');
+            div.className = 'batch-file-item';
+            div.innerHTML = '<span>&#127925; ' + (f.webkitRelativePath || f.name) + '</span><small>' +
+                (f.size/1024/1024).toFixed(1) + ' MB &nbsp;<a href="#" onclick="removeBatchFile(' + idx + '); return false;" style="color:#fc8181">&#10005;</a></small>';
+            list.appendChild(div);
+        });
+        const count = document.createElement('div');
+        count.className = 'batch-count';
+        count.textContent = batchFiles.length + ' file' + (batchFiles.length === 1 ? '' : 's') +
+            ' queued - add more albums or press Start';
+        list.appendChild(count);
+        btn.style.display = 'block';
+        clear.style.display = 'inline-block';
+    }
+
+    function removeBatchFile(idx) {
+        batchFiles.splice(idx, 1);
+        renderBatchFileList();
+    }
+
+    function clearBatchFiles() {
+        batchFiles = [];
+        renderBatchFileList();
+    }
+
+    function updateModelDropdown(engine) {
+        const sel = document.getElementById('model-select');
+        sel.innerHTML = ENGINE_MODELS[engine].map(m => '<option value="' + m.value + '">' + m.label + '</option>').join('');
+        document.getElementById('model-selector').classList.add('visible');
+    }
+
+    function selectParam(btn, param) {
+        document.querySelectorAll('[data-param="' + param + '"]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (param === 'bit_depth') selectedBitDepth = parseInt(btn.dataset.value);
+    }
+
+    function toggleStem(btn) {
+        btn.classList.toggle('active');
+        selectedStems = Array.from(document.querySelectorAll('#stems-filter-btns .param-btn.active')).map(b => b.dataset.stem);
+        if (!selectedStems.length) { btn.classList.add('active'); selectedStems = [btn.dataset.stem]; }
+    }
+
+    function handleFile(file) {
+        const model = document.getElementById('model-select').value;
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('engine', selectedEngine);
+        fd.append('model', model);
+        fd.append('bit_depth', selectedBitDepth);
+        selectedStems.forEach(s => fd.append('stems', s));
+        showProcessing();
+        fetch('/upload', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(data => { if (data.error) { alert(data.error); resetApp(); return; } currentTaskId = data.task_id; startPolling(); })
+            .catch(err => { alert('Upload error: ' + err); resetApp(); });
+    }
+
+    function handleYoutube() {
+        const raw = document.getElementById('youtube-url').value.trim();
+        if (!raw) { alert('Please paste a YouTube URL first!'); return; }
+        const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+        const model = document.getElementById('model-select').value;
+
+        // Multiple links pasted -> process each one as its own job with its
+        // own ZIP (queued one after another, so the GPU isn't shared).
+        if (lines.length > 1) {
+            runYoutubeQueue(lines, model);
+            return;
+        }
+
+        const url = lines[0];
+
+        // Treat any URL with a list= param as a playlist, even if it also
+        // points at a specific video (watch?v=...&list=...).
+        const isPlaylist = /[?&]list=/.test(url);
+
+        if (isPlaylist) {
+            document.getElementById('upload-section').classList.add('hidden');
+            document.getElementById('playlist-processing-section').classList.remove('hidden');
+            document.getElementById('playlist-status-text').textContent = 'Fetching Playlist...';
+            fetch('/playlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, engine: selectedEngine, model, bit_depth: selectedBitDepth }) })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) { alert(data.error); resetApp(); return; }
+                    currentPlaylistId = data.task_id;
+                    document.getElementById('playlist-counter').textContent = '0 / ' + data.total + ' songs';
+                    document.getElementById('playlist-song-list').innerHTML = '';
+                    startPlaylistPolling(data.total, 'playlist');
+                })
+                .catch(err => { alert('Playlist error: ' + err); resetApp(); });
+            return;
+        }
+
+        // Single video
+        showProcessing();
+        fetch('/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, engine: selectedEngine, model, bit_depth: selectedBitDepth, stems: selectedStems }) })
+            .then(r => r.json())
+            .then(data => { if (data.error) { alert(data.error); resetApp(); return; } currentTaskId = data.task_id; startPolling(); })
+            .catch(err => { alert('YouTube error: ' + err); resetApp(); });
+    }
+
+    // Process several pasted links one at a time, each becoming its own
+    // playlist task with its own ZIP (vocals + lyrics for every song in it).
+    async function runYoutubeQueue(links, model) {
+        document.getElementById('upload-section').classList.add('hidden');
+        document.getElementById('playlist-processing-section').classList.remove('hidden');
+        document.getElementById('playlist-results-section').classList.add('hidden');
+
+        const queueResults = [];
+        for (let i = 0; i < links.length; i++) {
+            const url = links[i];
+            document.getElementById('playlist-status-text').textContent = 'Link ' + (i + 1) + ' of ' + links.length;
+            document.getElementById('playlist-status-label').textContent = 'Fetching: ' + url;
+            document.getElementById('playlist-counter').textContent = '';
+            document.getElementById('playlist-progress-fill').style.width = '0%';
+            document.getElementById('playlist-song-list').innerHTML = '';
+
+            try {
+                const data = await fetch('/playlist', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, engine: selectedEngine, model, bit_depth: selectedBitDepth })
+                }).then(r => r.json());
+
+                if (data.error) { queueResults.push({ url, error: data.error }); continue; }
+                currentPlaylistId = data.task_id;
+                const result = await pollPlaylistUntilDone(data.task_id, data.total);
+                queueResults.push({ url, taskId: data.task_id, total: data.total, result });
+            } catch (err) {
+                queueResults.push({ url, error: String(err) });
+            }
+        }
+        showQueueResults(queueResults);
+    }
+
+    // Poll /status until a playlist task finishes, updating the shared
+    // progress UI, and resolve with the final task data.
+    function pollPlaylistUntilDone(taskId, total) {
+        return new Promise(resolve => {
+            const interval = setInterval(() => {
+                fetch('/status/' + taskId)
+                    .then(r => r.json())
+                    .then(data => {
+                        const current = data.current || 0;
+                        const currentTitle = data.current_title || '';
+                        const completed = data.completed_songs || [];
+                        document.getElementById('playlist-counter').textContent = current + ' / ' + total + ' songs';
+                        document.getElementById('playlist-progress-fill').style.width = (total > 0 ? (current/total)*100 : 0) + '%';
+                        if (currentTitle) document.getElementById('playlist-status-label').textContent = 'Now separating: "' + currentTitle + '"';
+                        updatePlaylistSongList(completed, currentTitle, total, current);
+                        if (data.status === 'completed') { clearInterval(interval); resolve(data); }
+                    })
+                    .catch(() => {});
+            }, 3000);
+        });
+    }
+
+    // Show one result card per pasted link, each with its own ZIP download.
+    function showQueueResults(queueResults) {
+        document.getElementById('playlist-processing-section').classList.add('hidden');
+        document.getElementById('playlist-results-section').classList.remove('hidden');
+        document.getElementById('zip-download-btn').classList.add('hidden');
+
+        const totalSongs = queueResults.reduce((sum, r) => sum + (r.result ? (r.result.completed_songs || []).length : 0), 0);
+        document.getElementById('results-title').textContent = 'Queue Results 🎉';
+        document.getElementById('playlist-results-label').textContent = queueResults.length + ' link(s) processed, ' + totalSongs + ' songs total';
+
+        const container = document.getElementById('playlist-results-container');
+        container.innerHTML = '';
+        queueResults.forEach((item, idx) => {
+            const card = document.createElement('div');
+            card.className = 'playlist-song-card';
+            if (item.error) {
+                card.innerHTML = '<h3>&#10060; Link ' + (idx+1) + '</h3>' +
+                    '<p style="color:#fc8181;font-size:.85rem">' + item.error + '</p>' +
+                    '<p class="subtitle" style="word-break:break-all">' + item.url + '</p>';
+            } else {
+                const completed = item.result.completed_songs || [];
+                const success = completed.filter(s => !s.error).length;
+                const cancelledNote = item.result.cancelled ? ' (cancelled early)' : '';
+                let zipHtml = '';
+                if (item.result.zip) {
+                    zipHtml = '<a class="btn-zip" href="/download-zip/' + item.taskId + '" download>&#11015; Download ZIP</a>';
+                }
+                card.innerHTML = '<h3>&#9989; Link ' + (idx+1) + ' &mdash; ' + success + '/' + completed.length + ' songs' + cancelledNote + '</h3>' +
+                    '<p class="subtitle" style="word-break:break-all">' + item.url + '</p>' + zipHtml;
+            }
+            container.appendChild(card);
+        });
+    }
+
+    async function handleBatch() {
+        if (!batchFiles.length) { alert('Please select files first!'); return; }
+        const model = document.getElementById('model-select').value;
+        const files = batchFiles.slice();   // snapshot
+        const total = files.length;
+
+        document.getElementById('upload-start-btn').style.display = 'none';
+        document.getElementById('upload-section').classList.add('hidden');
+        document.getElementById('playlist-processing-section').classList.remove('hidden');
+        document.getElementById('playlist-song-list').innerHTML = '';
+        document.getElementById('playlist-status-text').textContent = 'Preparing...';
+        document.getElementById('playlist-counter').textContent = '0 / ' + total + ' files';
+
+        try {
+            // 1) start a batch session
+            const start = await fetch('/batch/start', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ total, engine: selectedEngine, model, bit_depth: selectedBitDepth, stems: selectedStems })
+            }).then(r => r.json());
+            if (start.error || !start.batch_id) { alert(start.error || 'Could not start batch.'); resetApp(); return; }
+            const batchId = start.batch_id;
+            currentPlaylistId = batchId;
+
+            // 2) upload each file one at a time (robust for big albums)
+            for (let i = 0; i < files.length; i++) {
+                document.getElementById('playlist-status-text').textContent = 'Uploading ' + (i + 1) + ' / ' + total;
+                document.getElementById('playlist-status-label').textContent = files[i].name;
+                document.getElementById('playlist-progress-fill').style.width = ((i / total) * 50) + '%';
+                const fd = new FormData();
+                fd.append('batch_id', batchId);
+                fd.append('file', files[i]);
+                try {
+                    await fetch('/batch/file', { method: 'POST', body: fd });
+                } catch (e) {
+                    console.error('Upload failed for', files[i].name, e);
+                }
+            }
+
+            // 3) start processing, then poll like a normal batch
+            document.getElementById('playlist-status-text').textContent = 'Starting separation...';
+            document.getElementById('playlist-status-label').textContent = 'Processing ' + total + ' files one by one...';
+            const finish = await fetch('/batch/finish', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ batch_id: batchId })
+            }).then(r => r.json());
+            if (finish.error) { alert(finish.error); resetApp(); return; }
+
+            startPlaylistPolling(total, 'batch');
+        } catch (err) {
+            alert('Batch error: ' + err);
+            resetApp();
+        }
+    }
+
+    function showProcessing() {
+        document.getElementById('upload-section').classList.add('hidden');
+        document.getElementById('processing-section').classList.remove('hidden');
+        document.getElementById('engine-status-label').textContent = ENGINE_HINTS[selectedEngine] + ' - isolating sources...';
+    }
+
+    function startPolling() {
+        const labels = ['Analyzing Frequencies...','Isolating Sources...','Separating Stems...','Finalizing...'];
+        let labelIdx = 0;
+        pollInterval = setInterval(() => {
+            labelIdx = (labelIdx + 1) % labels.length;
+            document.getElementById('status-text').textContent = labels[labelIdx];
+            const w = parseFloat(document.getElementById('progress-fill').style.width) || 10;
+            document.getElementById('progress-fill').style.width = Math.min(w + 3, 95) + '%';
+            fetch('/status/' + currentTaskId)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'completed') { clearInterval(pollInterval); showResults(data); }
+                    else if (data.status === 'failed') { clearInterval(pollInterval); alert('Failed: ' + (data.error||'Unknown')); resetApp(); }
+                })
+                .catch(() => {});
+        }, 2000);
+    }
+
+    function cancelPlaylistTask() {
+        if (!currentPlaylistId) return;
+        const btn = document.getElementById('playlist-cancel-btn');
+        btn.disabled = true;
+        btn.textContent = 'Cancelling...';
+        fetch('/cancel/' + currentPlaylistId, { method: 'POST' }).catch(() => {});
+    }
+
+    function startPlaylistPolling(total, mode) {
+        const label = mode === 'batch' ? 'files' : 'songs';
+        const cancelBtn = document.getElementById('playlist-cancel-btn');
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = 'Cancel';
+        pollInterval = setInterval(() => {
+            fetch('/status/' + currentPlaylistId)
+                .then(r => r.json())
+                .then(data => {
+                    const current = data.current || 0;
+                    const currentTitle = data.current_title || '';
+                    const completed = data.completed_songs || [];
+                    document.getElementById('playlist-counter').textContent = current + ' / ' + total + ' ' + label;
+                    document.getElementById('playlist-progress-fill').style.width = (total > 0 ? (current/total)*100 : 0) + '%';
+                    document.getElementById('playlist-status-text').textContent = current > 0 ? 'Processing ' + label.slice(0,-1) + ' ' + current + ' of ' + total : 'Starting...';
+                    if (currentTitle) document.getElementById('playlist-status-label').textContent = 'Now separating: "' + currentTitle + '"';
+                    updatePlaylistSongList(completed, currentTitle, total, current);
+                    if (data.status === 'completed') { clearInterval(pollInterval); showBatchPlaylistResults(data, total, mode); }
+                })
+                .catch(() => {});
+        }, 3000);
+    }
+
+    function updatePlaylistSongList(completed, currentTitle, total, current) {
+        const list = document.getElementById('playlist-song-list');
+        list.innerHTML = '';
+        completed.forEach(song => {
+            const li = document.createElement('li');
+            li.className = song.error ? 'error' : 'done';
+            li.innerHTML = '<span class="song-status-icon">' + (song.error ? '&#10060;' : '&#9989;') + '</span> ' + song.title;
+            list.appendChild(li);
+        });
+        if (currentTitle && current <= total) {
+            const li = document.createElement('li');
+            li.className = 'active';
+            li.innerHTML = '<span class="song-status-icon">&#9203;</span> ' + currentTitle;
+            list.appendChild(li);
+        }
+    }
+
+    function showBatchPlaylistResults(data, total, mode) {
+        document.getElementById('playlist-processing-section').classList.add('hidden');
+        document.getElementById('playlist-results-section').classList.remove('hidden');
+        const completed = data.completed_songs || [];
+        const success = completed.filter(s => !s.error).length;
+        const cancelledNote = data.cancelled ? ' (cancelled early)' : '';
+        document.getElementById('results-title').textContent = (mode === 'batch' ? 'Batch Results' : 'Playlist Results') + (data.cancelled ? '' : ' 🎉');
+        document.getElementById('playlist-results-label').textContent = success + ' / ' + total + ' ' + (mode === 'batch' ? 'files' : 'songs') + ' separated successfully' + cancelledNote;
+        const container = document.getElementById('playlist-results-container');
+        container.innerHTML = '';
+        completed.forEach(song => {
+            const card = document.createElement('div');
+            card.className = 'playlist-song-card';
+            if (song.error) {
+                card.innerHTML = '<h3>&#10060; ' + song.title + '</h3><p style="color:#fc8181;font-size:.85rem">' + song.error + '</p>';
+            } else {
+                const stemsHtml = Object.entries(song.stems).map(([stem, rel]) =>
+                    '<a class="playlist-stem-link" href="/download/' + rel + '" download="' + stem + '.wav">' + (STEM_EMOJI[stem]||'&#127925;') + ' ' + capitalize(stem) + '</a>').join('');
+                const durationHtml = song.duration ? ' <span class="subtitle">(' + song.duration + ')</span>' : '';
+                card.innerHTML = '<h3>&#9989; ' + song.title + durationHtml + '</h3><div class="playlist-song-stems">' + stemsHtml + '</div>';
+            }
+            container.appendChild(card);
+        });
+        if (data.zip) {
+            const zipBtn = document.getElementById('zip-download-btn');
+            zipBtn.href = mode === 'batch' ? '/download-batch-zip/' + currentPlaylistId : '/download-zip/' + currentPlaylistId;
+            zipBtn.classList.remove('hidden');
+        }
+    }
+
+    function formatTime(s) {
+        if (!isFinite(s) || s < 0) s = 0;
+        const m = Math.floor(s/60), sec = Math.floor(s%60);
+        return m + ':' + sec.toString().padStart(2,'0');
+    }
+
+    // ---------------------------------------------------------------
+    // PLAYBACK CORE
+    //   playMode = 'original' -> plays the FULL ORIGINAL TRACK
+    //   playMode = <stem>     -> plays only that separated stem (solo)
+    // The lyrics always follow whichever audio is currently leading.
+    // ---------------------------------------------------------------
+
+    function leadAudio() {
+        if (playMode === 'original' && originalAudio) return originalAudio;
+        if (playMode !== 'none' && playMode !== 'original' && stemAudios[playMode]) return stemAudios[playMode];
+        return originalAudio || stemAudios[Object.keys(stemAudios)[0]] || null;
+    }
+
+    function setMasterBtn(playing) {
+        document.getElementById('master-play').innerHTML = playing
+            ? '<span class="icon">&#9208;</span> Pause Song'
+            : '<span class="icon">&#9654;</span> Play Song';
+    }
+
+    function resetSoloButtons() {
+        Object.keys(stemAudios).forEach(s => {
+            const b = document.getElementById('solo-btn-' + s);
+            if (b) { b.innerHTML = '&#9654; Play'; b.classList.remove('playing'); }
+        });
+    }
+
+    function pauseAllAudio() {
+        if (originalAudio) originalAudio.pause();
+        Object.values(stemAudios).forEach(a => a.pause());
+    }
+
+    function stopLyricTimer() {
+        if (lyricTimer) { clearInterval(lyricTimer); lyricTimer = null; }
+    }
+
+    function startLyricTimer() {
+        stopLyricTimer();
+        lyricTimer = setInterval(syncTick, 150);
+    }
+
+    function syncTick() {
+        const lead = leadAudio();
+        if (!lead) return;
+        const t   = lead.currentTime;
+        const dur = lead.duration || 0;
+
+        // A stem's slider/time only moves when THAT stem is the one playing.
+        // While "Play Song" (original) plays, the stem sliders stay put.
+        Object.keys(stemAudios).forEach(s => {
+            if (playMode !== s) return;
+            const slider = document.getElementById('slider-' + s);
+            const timeD  = document.getElementById('time-' + s);
+            if (slider && !seeking) { slider.max = dur || 100; slider.value = t; }
+            if (timeD) timeD.textContent = formatTime(t) + ' / ' + formatTime(dur);
+        });
+
+        // Keep stems aligned only when we're mixing them as a fallback
+        if (playMode === 'original' && masterFallback) {
+            Object.values(stemAudios).forEach(a => {
+                if (Math.abs(a.currentTime - t) > 0.25) a.currentTime = t;
+            });
+        }
+
+        updateLyricHighlight(t);
+    }
+
+    function updateLyricHighlight(t) {
+        if (!lyricsData.length) return;
+        let idx = -1;
+        for (let i = 0; i < lyricsData.length; i++) {
+            if (lyricsData[i].start <= t + 0.15) idx = i; else break;
+        }
+        if (idx === lastActiveIdx) return;
+        lastActiveIdx = idx;
+
+        lyricsData.forEach((_, i) => {
+            const el = document.getElementById('lyric-line-' + i);
+            if (!el) return;
+            el.classList.toggle('active', i === idx);
+            el.classList.toggle('passed', i < idx);
+        });
+
+        const active = document.getElementById('lyric-line-' + idx);
+        if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function toggleMasterPlay() {
+        const anyAudio = originalAudio || stemAudios[Object.keys(stemAudios)[0]];
+        if (!anyAudio) return;
+
+        if (playMode === 'original') {          // currently playing -> pause
+            pauseAllAudio();
+            stopLyricTimer();
+            setMasterBtn(false);
+            playMode = 'none';
+            return;
+        }
+
+        const t = leadAudio() ? leadAudio().currentTime : 0;
+        pauseAllAudio();
+        resetSoloButtons();
+        playMode = 'original';
+
+        if (originalAudio) {
+            masterFallback = false;
+            originalAudio.muted = false;
+            originalAudio.currentTime = t;
+            originalAudio.play().catch(() => {});
+        } else {
+            // No original available (older task) -> mix all stems together
+            masterFallback = true;
+            Object.keys(stemAudios).forEach(k => {
+                stemAudios[k].muted = !!mutedStems[k];
+                stemAudios[k].currentTime = t;
+                stemAudios[k].play().catch(() => {});
+            });
+        }
+        setMasterBtn(true);
+        startLyricTimer();
+    }
+
+    function toggleSolo(stem, btn) {
+        const audio = stemAudios[stem];
+        if (!audio) return;
+
+        if (playMode === stem) {               // this stem is playing -> pause
+            audio.pause();
+            btn.innerHTML = '&#9654; Play';
+            btn.classList.remove('playing');
+            stopLyricTimer();
+            playMode = 'none';
+            return;
+        }
+
+        const t = leadAudio() ? leadAudio().currentTime : 0;
+        pauseAllAudio();
+        resetSoloButtons();
+        setMasterBtn(false);
+        playMode = stem;
+        audio.muted = false;                   // a soloed stem is always audible
+        audio.currentTime = t;
+        audio.play().catch(() => {});
+        btn.innerHTML = '&#9208; Pause';
+        btn.classList.add('playing');
+        startLyricTimer();
+    }
+
+    function toggleMute(stem, btn) {
+        mutedStems[stem] = !mutedStems[stem];
+        if (stemAudios[stem]) stemAudios[stem].muted = mutedStems[stem];
+        btn.textContent = mutedStems[stem] ? 'Unmute' : 'Mute';
+        btn.classList.toggle('muted', mutedStems[stem]);
+    }
+
+    function seekAll(t) {
+        if (originalAudio) originalAudio.currentTime = t;
+        Object.values(stemAudios).forEach(a => { a.currentTime = t; });
+        updateLyricHighlight(t);
+    }
+
+    function showResults(data) {
+        document.getElementById('processing-section').classList.add('hidden');
+        document.getElementById('player-section').classList.remove('hidden');
+
+        // fresh state
+        pauseAllAudio();
+        stopLyricTimer();
+        if (originalAudio) { originalAudio.src = ''; originalAudio = null; }
+        stemAudios = {}; stemUrls = {}; mutedStems = {}; lyricsData = [];
+        masterFallback = false;
+        playMode = 'none'; lastActiveIdx = -1; seeking = false;
+        setMasterBtn(false);
+
+        // The full original track, played by the "Play Song" button
+        if (data.original) {
+            originalAudio = new Audio(data.original);
+            originalAudio.preload = 'auto';
+            originalAudio.onended = () => {
+                if (playMode === 'original') {
+                    pauseAllAudio(); resetSoloButtons(); setMasterBtn(false);
+                    stopLyricTimer(); playMode = 'none';
+                }
+            };
+        }
+
+        const badge = document.getElementById('result-engine-badge');
+        badge.textContent = data.engine || selectedEngine;
+        badge.className = 'engine-badge badge-' + (data.engine || selectedEngine);
+        document.getElementById('result-model-label').textContent = 'Model: ' + (data.model||'') + ' - ' + (data.bit_depth||16) + '-bit';
+
+        const existing = document.getElementById('song-info-panel');
+        if (existing) existing.remove();
+        const info = data.audio_info || {};
+        if (Object.keys(info).length > 0) {
+            const panel = document.createElement('div');
+            panel.className = 'song-info-panel'; panel.id = 'song-info-panel';
+            [
+                { label: 'BPM',         value: info.bpm },
+                { label: 'Duration',    value: info.duration },
+                { label: 'Sample Rate', value: info.sample_rate },
+                { label: 'Channels',    value: info.channels },
+                { label: 'Format',      value: info.format },
+            ].forEach(item => {
+                panel.innerHTML += '<div class="song-info-item"><div class="song-info-value">' + (item.value||'--') + '</div><div class="song-info-label">' + item.label + '</div></div>';
+            });
+            document.querySelector('#player-section .section-header').after(panel);
+        }
+
+        const container = document.getElementById('stems-container');
+        container.innerHTML = '';
+        for (const [stem, relPath] of Object.entries(data.results)) {
+            const url  = '/download/' + relPath;
+            stemUrls[stem] = url;
+            const icon = STEM_EMOJI[stem] || '&#127925;';
+            const card = document.createElement('div');
+            card.className = 'stem-card';
+            card.innerHTML =
+                '<div class="stem-header">' +
+                    '<span class="stem-icon">' + icon + '</span>' +
+                    '<span class="stem-name">' + capitalize(stem) + '</span>' +
+                    '<button class="btn-solo" id="solo-btn-' + stem + '" onclick="toggleSolo(\'' + stem + '\', this)">&#9654; Play</button>' +
+                    '<button class="btn-mute" id="mute-btn-' + stem + '" onclick="toggleMute(\'' + stem + '\', this)">Mute</button>' +
+                '</div>' +
+                '<div class="custom-player">' +
+                    '<input type="range" class="progress-slider" id="slider-' + stem + '" value="0" min="0" max="100" step="0.1">' +
+                    '<span class="time-display" id="time-' + stem + '">0:00 / 0:00</span>' +
+                '</div>' +
+                '<a class="btn-download" href="' + url + '" download="' + stem + '.wav">&#11015; Download</a>';
+            container.appendChild(card);
+
+            const audio = new Audio(url);
+            audio.preload = 'auto';
+            stemAudios[stem] = audio;
+
+            const slider = document.getElementById('slider-' + stem);
+            const timeD  = document.getElementById('time-' + stem);
+
+            audio.onloadedmetadata = () => {
+                slider.max = audio.duration || 100;
+                timeD.textContent = '0:00 / ' + formatTime(audio.duration);
+            };
+
+            audio.onended = () => {
+                // when the leading track finishes, stop everything cleanly
+                if (playMode !== 'none') {
+                    pauseAllAudio();
+                    resetSoloButtons();
+                    setMasterBtn(false);
+                    stopLyricTimer();
+                    playMode = 'none';
+                }
+            };
+
+            // Dragging ANY slider seeks ALL stems together (shared timeline)
+            const startSeek = () => { seeking = true; };
+            const liveSeek  = () => {
+                const t = parseFloat(slider.value);
+                timeD.textContent = formatTime(t) + ' / ' + formatTime(audio.duration||0);
+                if (lyricsData.length) updateLyricHighlight(t);
+            };
+            const commitSeek = () => {
+                const t = parseFloat(slider.value);
+                seekAll(t);
+                seeking = false;
+            };
+            slider.addEventListener('mousedown', startSeek);
+            slider.addEventListener('touchstart', startSeek);
+            slider.addEventListener('input', liveSeek);
+            slider.addEventListener('mouseup', commitSeek);
+            slider.addEventListener('touchend', commitSeek);
+        }
+
+        // ---- Lyrics (with timestamps) ----
+        lyricsData = (data.lyrics || []).map(l =>
+            (typeof l === 'object' && l !== null)
+                ? { start: parseFloat(l.start) || 0, end: parseFloat(l.end) || 0, text: (l.text || '').trim() }
+                : { start: 0, end: 0, text: String(l) }
+        ).filter(l => l.text.length > 0);
+
+        const lyricsContainer = document.getElementById('lyrics-container');
+        if (lyricsData.length) {
+            document.getElementById('lyrics-section').classList.remove('hidden');
+            lyricsContainer.innerHTML = lyricsData.map((l, i) =>
+                '<p class="lyric-line" id="lyric-line-' + i + '">' + (l.text || '&hellip;') + '</p>'
+            ).join('');
+        } else {
+            document.getElementById('lyrics-section').classList.add('hidden');
+        }
+    }
+
+    function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+    // ---------------------------------------------------------------
+    // SEPARATION HISTORY
+    // ---------------------------------------------------------------
+    function showHistory() {
+        // pause anything playing and hide other panels
+        if (typeof pauseAllAudio === 'function') pauseAllAudio();
+        if (typeof stopLyricTimer === 'function') stopLyricTimer();
+        ['upload-section','processing-section','player-section','lyrics-section',
+         'playlist-processing-section','playlist-results-section']
+            .forEach(id => document.getElementById(id).classList.add('hidden'));
+        document.getElementById('history-section').classList.remove('hidden');
+
+        const list = document.getElementById('history-list');
+        list.innerHTML = '<p class="text-dim">Loading history...</p>';
+        fetch('/history')
+            .then(r => r.json())
+            .then(items => renderHistory(items))
+            .catch(() => { list.innerHTML = '<p class="text-dim">Could not load history.</p>'; });
+    }
+
+    function hideHistory() {
+        document.getElementById('history-section').classList.add('hidden');
+        document.getElementById('upload-section').classList.remove('hidden');
+        switchInput('file');
+    }
+
+    function renderHistory(items) {
+        const list = document.getElementById('history-list');
+        if (!items || !items.length) {
+            list.innerHTML = '<p class="text-dim">No separations yet. Your completed jobs will appear here.</p>';
+            return;
+        }
+        // keep records available for re-opening
+        window._historyItems = items;
+        list.innerHTML = '';
+        items.forEach((rec, idx) => {
+            const card = document.createElement('div');
+            card.className = 'playlist-song-card';
+            const sub = (rec.engine ? rec.engine : '') +
+                        (rec.model ? ' &middot; ' + rec.model : '') +
+                        (rec.time ? ' &middot; ' + rec.time : '');
+            card.innerHTML =
+                '<h3>' + (rec.type === 'single' ? '&#127925; ' : '&#128193; ') + (rec.title || 'Untitled') + '</h3>' +
+                '<p class="subtitle" style="margin:.2rem 0 .6rem">' + sub + '</p>' +
+                '<button class="playlist-stem-link" style="border:none;cursor:pointer" onclick="openHistory(' + idx + ')">&#9654; Open</button> ' +
+                '<button class="playlist-stem-link" style="border:none;cursor:pointer;background:rgba(252,129,129,.15);color:#fc8181" onclick="deleteHistory(' + idx + ')">&#128465; Delete</button>';
+            list.appendChild(card);
+        });
+    }
+
+    function deleteHistory(idx) {
+        const rec = (window._historyItems || [])[idx];
+        if (!rec || !rec.id) return;
+        if (!confirm('Delete "' + (rec.title || 'this item') + '" and its separated files?')) return;
+        fetch('/history/' + rec.id, { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { alert(data.error); return; }
+                showHistory();
+            })
+            .catch(err => alert('Delete error: ' + err));
+    }
+
+    function openHistory(idx) {
+        const rec = (window._historyItems || [])[idx];
+        if (!rec) return;
+        document.getElementById('history-section').classList.add('hidden');
+        document.getElementById('upload-section').classList.add('hidden');
+
+        if (rec.type === 'single') {
+            // Rebuild the full single-track player + lyrics + original playback
+            showResults({
+                results:    rec.results || {},
+                original:   rec.original || null,
+                lyrics:     rec.lyrics || [],
+                engine:     rec.engine,
+                model:      rec.model,
+                bit_depth:  rec.bit_depth,
+                audio_info: rec.audio_info || {},
+            });
+        } else {
+            // Batch / playlist results view
+            currentPlaylistId = rec.id;
+            showBatchPlaylistResults(
+                { completed_songs: rec.completed_songs || [], zip: rec.zip },
+                (rec.completed_songs || []).length,
+                rec.type === 'batch' ? 'batch' : 'playlist'
+            );
+        }
+    }
+
+    // Save the transcription as a plain-text .txt file
+    function downloadLyrics() {
+        if (!lyricsData.length) { alert('No lyrics to download yet.'); return; }
+        const text = lyricsData.map(l => l.text).join('\n');
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href = url;
+        a.download = 'lyrics.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function resetApp() {
+        clearInterval(pollInterval);
+        stopLyricTimer();
+        if (originalAudio) { originalAudio.pause(); originalAudio.src = ''; originalAudio = null; }
+        Object.values(stemAudios).forEach(a => { a.pause(); a.src = ''; });
+        stemAudios = {}; stemUrls = {}; mutedStems = {}; lyricsData = [];
+        masterFallback = false;
+        playMode = 'none'; lastActiveIdx = -1; seeking = false;
+        currentTaskId = null; currentPlaylistId = null; batchFiles = [];
+        document.getElementById('upload-section').classList.remove('hidden');
+        ['processing-section','player-section','lyrics-section',
+         'playlist-processing-section','playlist-results-section','history-section']
+            .forEach(id => document.getElementById(id).classList.add('hidden'));
+        document.getElementById('file-input').value = '';
+        document.getElementById('youtube-url').value = '';
+        document.getElementById('progress-fill').style.width = '0%';
+        document.getElementById('playlist-progress-fill').style.width = '0%';
+        document.getElementById('zip-download-btn').classList.add('hidden');
+        setMasterBtn(false);
+        document.getElementById('upload-file-list').innerHTML = '';
+        document.getElementById('upload-start-btn').style.display = 'none';
+        document.getElementById('upload-clear-btn').style.display = 'none';
+        const panel = document.getElementById('song-info-panel');
+        if (panel) panel.remove();
+        document.getElementById('lyrics-container').innerHTML =
+            '<p class="text-dim">Lyrics will appear here and follow the music as it plays...</p>';
+        switchInput('file');
+    }
+    </script>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
