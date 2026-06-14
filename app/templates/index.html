@@ -491,10 +491,9 @@
         if (!url) { alert('Please paste a YouTube URL first!'); return; }
         const model = document.getElementById('model-select').value;
 
-        // Detect a playlist: has list=, and is either a /playlist URL or has no single video id
-        const hasList  = /[?&]list=/.test(url);
-        const hasVideo = /[?&]v=/.test(url) || /youtu\.be\//.test(url);
-        const isPlaylist = hasList && (/\/playlist/.test(url) || !hasVideo);
+        // Treat any URL with a list= param as a playlist, even if it also
+        // points at a specific video (watch?v=...&list=...).
+        const isPlaylist = /[?&]list=/.test(url);
 
         if (isPlaylist) {
             document.getElementById('upload-section').classList.add('hidden');
