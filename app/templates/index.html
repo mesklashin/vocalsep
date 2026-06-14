@@ -138,12 +138,16 @@
                         <button class="btn-primary" onclick="document.getElementById('folder-input').click()">Select One Album</button>
                     </div>
                     <p class="text-dim" style="font-size:.8rem; margin-top:.6rem;">
-                        <b>Tip:</b> to process several albums at once, drag the album
-                        folders straight onto this box &mdash; every track inside is added
-                        automatically. The <b>Select One Album</b> button picks a single folder.
+                        <b>Tip:</b> drag several album folders onto this box at once to
+                        queue them all, or click <b>Select One Album</b> repeatedly to
+                        add one folder at a time &mdash; everything you add stays queued
+                        until you press Start.
                     </p>
                     <div id="upload-file-list" style="width:100%; max-height:220px; overflow-y:auto; margin-top:.6rem;"></div>
-                    <button class="btn-batch-start" id="upload-start-btn" onclick="handleBatch()">&#9654; Start Separation</button>
+                    <div style="display:flex; gap:.6rem; flex-wrap:wrap; justify-content:center;">
+                        <button class="btn-batch-start" id="upload-start-btn" onclick="handleBatch()">&#9654; Start Separation</button>
+                        <button class="btn-small" id="upload-clear-btn" style="display:none" onclick="clearBatchFiles()">&#10060; Clear All</button>
+                    </div>
                 </div>
 
                 <div class="youtube-container" id="youtube-section">
@@ -381,6 +385,7 @@
         });
         document.getElementById('file-input').addEventListener('change', e => {
             handleSelectedFiles(Array.from(e.target.files));
+            e.target.value = '';
         });
         document.getElementById('folder-input').addEventListener('change', e => {
             // A folder pick returns everything inside (incl. sub-folders and
@@ -388,6 +393,7 @@
             const audio = Array.from(e.target.files).filter(f => AUDIO_RE.test(f.name));
             if (!audio.length) { alert('No MP3, WAV, or FLAC files found in that folder.'); return; }
             handleSelectedFiles(audio);
+            e.target.value = '';
         });
         const zone = document.getElementById('drop-zone');
         zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
@@ -427,31 +433,61 @@
         document.getElementById('youtube-section').classList.toggle('visible', type === 'youtube');
     }
 
-    // One file -> single track (full player + lyrics). Many files -> batch.
+    // One file (first selection, nothing queued yet) -> single track (full
+    // player + lyrics). Anything else -> add to the batch queue, so users can
+    // pick several albums one folder at a time (or drop them all at once).
     function handleSelectedFiles(files) {
         if (!files.length) return;
-        if (files.length === 1) {
-            batchFiles = [];
-            document.getElementById('upload-file-list').innerHTML = '';
-            document.getElementById('upload-start-btn').style.display = 'none';
+        if (files.length === 1 && batchFiles.length === 0) {
             handleFile(files[0]);
             return;
         }
-        batchFiles = files;
-        const list = document.getElementById('upload-file-list');
-        const btn  = document.getElementById('upload-start-btn');
+        // De-dupe against what's already queued (same name + size + folder).
+        const existingKeys = new Set(batchFiles.map(f => f.webkitRelativePath + '|' + f.name + '|' + f.size));
+        for (const f of files) {
+            const key = f.webkitRelativePath + '|' + f.name + '|' + f.size;
+            if (!existingKeys.has(key)) {
+                batchFiles.push(f);
+                existingKeys.add(key);
+            }
+        }
+        renderBatchFileList();
+    }
+
+    function renderBatchFileList() {
+        const list  = document.getElementById('upload-file-list');
+        const btn   = document.getElementById('upload-start-btn');
+        const clear = document.getElementById('upload-clear-btn');
         list.innerHTML = '';
-        files.forEach(f => {
+        if (!batchFiles.length) {
+            btn.style.display = 'none';
+            clear.style.display = 'none';
+            return;
+        }
+        batchFiles.forEach((f, idx) => {
             const div = document.createElement('div');
             div.className = 'batch-file-item';
-            div.innerHTML = '<span>&#127925; ' + f.name + '</span><small>' + (f.size/1024/1024).toFixed(1) + ' MB</small>';
+            div.innerHTML = '<span>&#127925; ' + (f.webkitRelativePath || f.name) + '</span><small>' +
+                (f.size/1024/1024).toFixed(1) + ' MB &nbsp;<a href="#" onclick="removeBatchFile(' + idx + '); return false;" style="color:#fc8181">&#10005;</a></small>';
             list.appendChild(div);
         });
         const count = document.createElement('div');
         count.className = 'batch-count';
-        count.textContent = files.length + ' files selected - press Start to separate the album';
+        count.textContent = batchFiles.length + ' file' + (batchFiles.length === 1 ? '' : 's') +
+            ' queued - add more albums or press Start';
         list.appendChild(count);
         btn.style.display = 'block';
+        clear.style.display = 'inline-block';
+    }
+
+    function removeBatchFile(idx) {
+        batchFiles.splice(idx, 1);
+        renderBatchFileList();
+    }
+
+    function clearBatchFiles() {
+        batchFiles = [];
+        renderBatchFileList();
     }
 
     function updateModelDropdown(engine) {
@@ -1102,6 +1138,7 @@
         setMasterBtn(false);
         document.getElementById('upload-file-list').innerHTML = '';
         document.getElementById('upload-start-btn').style.display = 'none';
+        document.getElementById('upload-clear-btn').style.display = 'none';
         const panel = document.getElementById('song-info-panel');
         if (panel) panel.remove();
         document.getElementById('lyrics-container').innerHTML =
