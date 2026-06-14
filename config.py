@@ -18,6 +18,13 @@ WEB_RESULTS_DIR = (STATIC_DIR / "results").resolve()
 
 ALLOWED_EXTENSIONS = {'mp3', 'wav', 'flac'}
 
+# If a bundled ffmpeg was downloaded via scripts/download_ffmpeg.py, make it
+# available on PATH so subprocess calls (yt-dlp, librosa, etc.) find it
+# without requiring a system-wide ffmpeg install.
+_BUNDLED_FFMPEG_BIN = BASE_DIR / "bin" / "ffmpeg" / "bin"
+if _BUNDLED_FFMPEG_BIN.exists():
+    os.environ["PATH"] = str(_BUNDLED_FFMPEG_BIN) + os.pathsep + os.environ.get("PATH", "")
+
 # Hardware
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 

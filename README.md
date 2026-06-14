@@ -53,44 +53,23 @@ python --version
 ffmpeg is used by every separation engine and by the YouTube downloader. The app
 **will not work without it.**
 
-1. Install it. The easiest way on Windows is winget:
-   ```
-   winget install Gyan.FFmpeg
-   ```
-2. Find where it was installed:
-   ```
-   where ffmpeg
-   ```
-   This prints a full path ending in `...\bin\ffmpeg.exe`.
-3. Confirm it works in a **new** terminal:
-   ```
-   ffmpeg -version
-   ```
-   If you see version information, ffmpeg is on your PATH and ready.
+**You don't need to install ffmpeg yourself.** Running `setup_env.bat`
+(Section 4) automatically downloads a self-contained copy into `bin/ffmpeg/`,
+and the app adds it to its `PATH` automatically when it starts. No system-wide
+install or PATH edit needed.
 
-If `ffmpeg -version` says *"not recognized"*, the folder containing
-`ffmpeg.exe` is not on your PATH — add it using the steps in Section 2.4.
+If you'd rather use a system-wide ffmpeg instead, install it with
+`winget install Gyan.FFmpeg` and make sure `ffmpeg -version` works in a new
+terminal — the bundled copy is only used if `bin/ffmpeg/bin/ffmpeg.exe` exists.
 
 ### 2.3 yt-dlp (required for the YouTube feature)
 
-yt-dlp downloads audio from YouTube links. Without it, the YouTube box will fail
-with `[WinError 2] The system cannot find the file specified`. File upload still
-works without yt-dlp, but the YouTube feature does not.
+yt-dlp downloads audio from YouTube links. Without it, the YouTube box will fail.
+File upload still works without yt-dlp, but the YouTube feature does not.
 
-The simplest, most reliable method is the standalone executable (no Python
-needed):
-
-1. Download `yt-dlp.exe` from the official releases page:
-   <https://github.com/yt-dlp/yt-dlp/releases/latest> (the file named
-   **`yt-dlp.exe`**).
-2. Create a folder for your tools, for example `C:\tools`.
-3. Move `yt-dlp.exe` into `C:\tools`.
-4. Add `C:\tools` to your PATH (see Section 2.4).
-5. Confirm in a **new** terminal:
-   ```
-   yt-dlp --version
-   ```
-   It should print a version like `2026.03.17`.
+**You don't need to install this separately either** — `yt-dlp` is listed in
+`requirements.txt` and gets installed into your virtual environment automatically
+during Section 4. The app finds it there on its own.
 
 ### 2.4 How to add a folder to PATH (Windows)
 
@@ -123,35 +102,22 @@ in the extracted folder.
 
 ## 4. Install the Python packages
 
-From inside the project folder, create and activate a virtual environment, then
-install the requirements.
+From inside the project folder, run the setup script. This creates a virtual
+environment, installs all required packages, and downloads the bundled ffmpeg:
 
-Create the environment:
+```
+setup_env.bat
+```
+
+This is the only setup step you need — it replaces creating/activating a venv
+and running `pip install` manually. If you prefer to do it by hand instead:
 
 ```
 python -m venv venv
-```
-
-Activate it (Windows):
-
-- **PowerShell:**
-  ```
-  .\venv\Scripts\Activate.ps1
-  ```
-  If PowerShell blocks the script, first run:
-  ```
-  Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
-  ```
-- **Command Prompt (cmd):**
-  ```
-  venv\Scripts\activate.bat
-  ```
-
-You should now see `(venv)` at the start of your prompt. Install the packages:
-
-```
+.\venv\Scripts\activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+python scripts\download_ffmpeg.py
 ```
 
 > The first run may download model files (for Demucs and Whisper). This is
@@ -173,17 +139,8 @@ Then open your browser at:
 http://127.0.0.1:5000
 ```
 
-> **About `run.bat`:** the included file points at a specific Python on the
-> developer's machine. If it does not start on your computer, edit `run.bat` so
-> it points at the Python in your own environment. A portable version looks like
-> this:
-> ```bat
-> @echo off
-> set PYTHONPATH=.
-> venv\Scripts\python.exe app/main.py
-> ```
-> (Replace `venv\Scripts\python.exe` with your Spleeter environment's Python if
-> you set Spleeter up as in Section 6.)
+`run.bat` runs the app using the virtual environment created in Section 4
+(`venv\Scripts\python.exe`), so it works out of the box after `setup_env.bat`.
 
 To stop the app, press **Ctrl+C** in the terminal where it is running.
 
@@ -219,16 +176,16 @@ separate environment**.
 These are the most common problems and their fixes.
 
 ### `[WinError 2] The system cannot find the file specified`
-A program the app needs is not on your PATH. This almost always means **yt-dlp**
-(for YouTube links) or **ffmpeg** is missing. Install the missing tool
-(Sections 2.2 / 2.3) and add its folder to PATH (Section 2.4). Open a new
-terminal afterwards.
+A program the app needs could not be found. This almost always means
+**ffmpeg** or **yt-dlp** is missing. Re-run `setup_env.bat` (Section 4) so the
+bundled ffmpeg is downloaded into `bin/ffmpeg/` and `yt-dlp` is installed from
+`requirements.txt`.
 
 ### `ModuleNotFoundError: No module named 'flask'`
 You ran the app with the wrong Python — one that doesn't have the project's
-packages. Make sure your virtual environment is activated (you should see
-`(venv)`), that you ran `pip install -r requirements.txt`, and start the app with
-`run.bat` rather than calling `python app/main.py` directly.
+packages. Run `setup_env.bat` (Section 4) to create the virtual environment and
+install the requirements, and start the app with `run.bat` rather than calling
+`python app/main.py` directly.
 
 ### `No module named pip`
 The Python you're using has no pip. Either use your project's virtual environment
@@ -236,12 +193,6 @@ The Python you're using has no pip. Either use your project's virtual environmen
 ```
 python -m ensurepip --upgrade
 ```
-
-### `'ffmpeg' is not recognized` / `'yt-dlp' is not recognized`
-The tool is installed but not on PATH, **or** you're using a terminal opened
-before you changed PATH. Add the folder (Section 2.4) and open a brand-new
-terminal. In editors like VS Code, fully restart the editor — new terminal tabs
-alone keep the old PATH.
 
 ### PowerShell won't run a program in the current folder
 PowerShell requires a `.\` prefix for local paths, e.g.:
@@ -268,9 +219,8 @@ terminal first.
 ## 8. Quick checklist
 
 - [ ] Python installed and on PATH (`python --version`)
-- [ ] ffmpeg installed and on PATH (`ffmpeg -version`)
-- [ ] yt-dlp installed and on PATH (`yt-dlp --version`) — for YouTube
-- [ ] Project downloaded, virtual environment created and activated
-- [ ] `pip install -r requirements.txt` completed
+- [ ] Project cloned/downloaded
+- [ ] `setup_env.bat` run successfully (creates venv, installs requirements,
+      downloads bundled ffmpeg)
 - [ ] App starts with `run.bat` and opens at `http://127.0.0.1:5000`
 - [ ] (Optional) Spleeter set up in its own Python 3.8 environment
