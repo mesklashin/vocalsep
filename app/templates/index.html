@@ -129,17 +129,18 @@
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
                         </svg>
                     </div>
-                    <h2>Drop your track(s) here</h2>
-                    <p>One song or a whole album &middot; MP3, WAV, FLAC</p>
+                    <h2>Drop your songs or albums here</h2>
+                    <p>Drag in one or more <b>album folders</b> &middot; MP3, WAV, FLAC</p>
                     <input type="file" id="file-input" hidden accept=".mp3,.wav,.flac" multiple>
                     <input type="file" id="folder-input" hidden webkitdirectory directory multiple>
                     <div style="display:flex; gap:.6rem; flex-wrap:wrap; justify-content:center;">
                         <button class="btn-primary" onclick="document.getElementById('file-input').click()">Select Songs</button>
-                        <button class="btn-primary" onclick="document.getElementById('folder-input').click()">Select Folder</button>
+                        <button class="btn-primary" onclick="document.getElementById('folder-input').click()">Select One Album</button>
                     </div>
                     <p class="text-dim" style="font-size:.8rem; margin-top:.6rem;">
-                        For a whole album: click <b>Select Songs</b>, open your album folder,
-                        press <b>Ctrl+A</b> to select every track, then <b>Open</b>.
+                        <b>Tip:</b> to process several albums at once, drag the album
+                        folders straight onto this box &mdash; every track inside is added
+                        automatically. The <b>Select One Album</b> button picks a single folder.
                     </p>
                     <div id="upload-file-list" style="width:100%; max-height:220px; overflow-y:auto; margin-top:.6rem;"></div>
                     <button class="btn-batch-start" id="upload-start-btn" onclick="handleBatch()">&#9654; Start Separation</button>
@@ -342,6 +343,32 @@
     let lastActiveIdx = -1;
     let seeking      = false;
 
+    // Accepted audio file types (used by folder picker and drag-and-drop).
+    const AUDIO_RE = /\.(mp3|wav|flac)$/i;
+
+    // Recursively walk a dropped filesystem entry (file or directory) and push
+    // every File it contains into `out`. Lets users drop whole album folders.
+    function walkEntry(entry, out) {
+        return new Promise(resolve => {
+            if (!entry) return resolve();
+            if (entry.isFile) {
+                entry.file(f => { out.push(f); resolve(); }, () => resolve());
+            } else if (entry.isDirectory) {
+                const reader = entry.createReader();
+                const readBatch = () => {
+                    reader.readEntries(async batch => {
+                        if (!batch.length) return resolve();
+                        for (const child of batch) await walkEntry(child, out);
+                        readBatch();  // readEntries returns in chunks; keep going
+                    }, () => resolve());
+                };
+                readBatch();
+            } else {
+                resolve();
+            }
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.engine-tab').forEach(tab => {
             tab.addEventListener('click', () => {
@@ -357,18 +384,36 @@
         document.getElementById('folder-input').addEventListener('change', e => {
             // A folder pick returns everything inside (incl. sub-folders and
             // non-audio files like cover art) — keep only audio tracks.
-            const audio = Array.from(e.target.files).filter(f =>
-                /\.(mp3|wav|flac)$/i.test(f.name));
+            const audio = Array.from(e.target.files).filter(f => AUDIO_RE.test(f.name));
             if (!audio.length) { alert('No MP3, WAV, or FLAC files found in that folder.'); return; }
             handleSelectedFiles(audio);
         });
         const zone = document.getElementById('drop-zone');
         zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
         zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-        zone.addEventListener('drop', e => {
+        zone.addEventListener('drop', async e => {
             e.preventDefault();
             zone.classList.remove('drag-over');
-            if (e.dataTransfer.files.length) handleSelectedFiles(Array.from(e.dataTransfer.files));
+
+            // Drag-and-drop can include whole folders (whole albums), and even
+            // several folders at once. Walk every dropped item recursively and
+            // collect all the audio files inside, regardless of how deep they
+            // are nested. Falls back to a plain file list on old browsers.
+            const items = e.dataTransfer.items;
+            if (items && items.length && items[0].webkitGetAsEntry) {
+                const entries = [];
+                for (const it of items) {
+                    const entry = it.webkitGetAsEntry && it.webkitGetAsEntry();
+                    if (entry) entries.push(entry);
+                }
+                const files = [];
+                for (const entry of entries) await walkEntry(entry, files);
+                const audio = files.filter(f => AUDIO_RE.test(f.name));
+                if (!audio.length) { alert('No MP3, WAV, or FLAC files found in what you dropped.'); return; }
+                handleSelectedFiles(audio);
+            } else if (e.dataTransfer.files.length) {
+                handleSelectedFiles(Array.from(e.dataTransfer.files));
+            }
         });
         updateModelDropdown('demucs');
     });
