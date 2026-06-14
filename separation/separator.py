@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import threading
 from pathlib import Path
 from abc import ABC, abstractmethod
 
@@ -257,9 +258,20 @@ DEFAULT_MODELS = {
 }
 
 
+# Cache loaded separators so a batch of many songs reuses the same model
+# instead of reloading the weights onto the GPU for every single track.
+# Keyed by (engine, model). Guarded by a lock because separations run in
+# background threads.
+_separator_cache = {}
+_separator_lock = threading.Lock()
+
+
 def get_separator(engine: str = "demucs", model: str = None):
     """
     Factory function — returns an initialised separator for the given engine.
+
+    The separator (and its loaded model weights) is cached and reused across
+    calls, so processing hundreds of songs only loads each model once.
 
     Usage:
         sep = get_separator("spleeter")
@@ -271,4 +283,11 @@ def get_separator(engine: str = "demucs", model: str = None):
             f"Unknown engine '{engine}'. Available: {list(ENGINES.keys())}"
         )
     chosen_model = model or DEFAULT_MODELS[engine]
-    return ENGINES[engine](model=chosen_model)
+
+    cache_key = (engine, chosen_model)
+    with _separator_lock:
+        sep = _separator_cache.get(cache_key)
+        if sep is None:
+            sep = ENGINES[engine](model=chosen_model)
+            _separator_cache[cache_key] = sep
+        return sep
