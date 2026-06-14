@@ -1,7 +1,11 @@
 import whisper
 import torch
 import logging
+import sys
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +33,10 @@ class WhisperTranscriber:
         audio_path = str(Path(audio_path).resolve())
         logger.info(f"Starting ASR for: {audio_path}")
         
-        # We specify language='fr' for French Rap optimization
         # task='transcribe' (not translate)
         result = self.model.transcribe(
-            audio_path, 
-            language='fr', 
+            audio_path,
+            language=config.WHISPER_LANGUAGE,
             task='transcribe',
             verbose=False,
             fp16=(self.device == "cuda")

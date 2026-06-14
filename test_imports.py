@@ -3,6 +3,7 @@ import sys
 def test_imports():
     modules = [
         "demucs",
+        "openunmix",
         "whisper",
         "flask",
         "mir_eval",
@@ -11,7 +12,8 @@ def test_imports():
         "numpy",
         "pandas",
         "matplotlib",
-        "jiwer"
+        "jiwer",
+        "lyricsgenius",
     ]
     
     print(f"Python version: {sys.version}")
