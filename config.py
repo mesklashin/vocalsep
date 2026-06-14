@@ -28,15 +28,15 @@ if _BUNDLED_FFMPEG_BIN.exists():
 # Hardware
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# GPU performance tuning. These are safe for audio separation (no audible
-# quality loss) and give a noticeable speedup on modern NVIDIA cards:
-#   - TF32 matmul/cudnn: faster matrix math on Ampere+ GPUs.
-#   - cudnn.benchmark: autotunes the fastest kernels; works well here because
-#     audio is processed in fixed-size segments, so input shapes are stable.
+# GPU performance tuning. TF32 matmul is safe for audio separation (no
+# audible quality loss) and gives a speedup on Ampere+ NVIDIA cards.
+# Note: cudnn.benchmark is intentionally NOT enabled — Demucs splits audio
+# into segments where the last chunk has a different size, so cudnn would
+# re-run its algorithm search for every shape change, making things much
+# slower overall.
 if DEVICE == "cuda":
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
-    torch.backends.cudnn.benchmark = True
 
 # ---------------------------------------------------------------------------
 # Demucs
