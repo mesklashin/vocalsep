@@ -31,7 +31,7 @@
         .youtube-container { display: none; flex-direction: column; align-items: center; gap: 1rem; width: 100%; }
         .youtube-container.visible { display: flex; }
         .youtube-input-row { display: flex; gap: .6rem; width: 100%; }
-        .youtube-input { flex: 1; padding: .65rem 1rem; border: 1.5px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(255,255,255,.05); color: #fff; font-family: 'Outfit', sans-serif; font-size: .9rem; outline: none; transition: border-color .2s; }
+        .youtube-input { flex: 1; padding: .65rem 1rem; border: 1.5px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(255,255,255,.05); color: #fff; font-family: 'Outfit', sans-serif; font-size: .9rem; outline: none; transition: border-color .2s; resize: vertical; min-height: 2.6rem; }
         .youtube-input:focus { border-color: #ff4444; }
         .youtube-input::placeholder { color: rgba(255,255,255,.3); }
         .btn-youtube { padding: .65rem 1.2rem; border-radius: 10px; border: none; background: #ff4444; color: #fff; font-family: 'Outfit', sans-serif; font-size: .9rem; font-weight: 700; cursor: pointer; transition: background .2s; white-space: nowrap; }
@@ -153,10 +153,11 @@
 
                 <div class="youtube-container" id="youtube-section">
                     <div class="upload-icon">&#127916;</div>
-                    <h2>Paste a YouTube link</h2>
-                    <p>A single song, or a full playlist / album URL</p>
+                    <h2>Paste YouTube link(s)</h2>
+                    <p>One link per line &mdash; videos, playlists, or albums. Each link
+                       gets its own ZIP with vocals + lyrics.</p>
                     <div class="youtube-input-row">
-                        <input type="text" class="youtube-input" id="youtube-url" placeholder="youtube.com/watch?v=...  or  ...playlist?list=...">
+                        <textarea class="youtube-input" id="youtube-url" rows="3" placeholder="youtube.com/watch?v=...&#10;youtube.com/playlist?list=...&#10;(one per line for multiple zips)"></textarea>
                         <button class="btn-youtube" onclick="handleYoutube()">&#9654; Separate</button>
                     </div>
                 </div>
@@ -525,9 +526,19 @@
     }
 
     function handleYoutube() {
-        const url = document.getElementById('youtube-url').value.trim();
-        if (!url) { alert('Please paste a YouTube URL first!'); return; }
+        const raw = document.getElementById('youtube-url').value.trim();
+        if (!raw) { alert('Please paste a YouTube URL first!'); return; }
+        const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
         const model = document.getElementById('model-select').value;
+
+        // Multiple links pasted -> process each one as its own job with its
+        // own ZIP (queued one after another, so the GPU isn't shared).
+        if (lines.length > 1) {
+            runYoutubeQueue(lines, model);
+            return;
+        }
+
+        const url = lines[0];
 
         // Treat any URL with a list= param as a playlist, even if it also
         // points at a specific video (watch?v=...&list=...).
@@ -556,6 +567,95 @@
             .then(r => r.json())
             .then(data => { if (data.error) { alert(data.error); resetApp(); return; } currentTaskId = data.task_id; startPolling(); })
             .catch(err => { alert('YouTube error: ' + err); resetApp(); });
+    }
+
+    // Process several pasted links one at a time, each becoming its own
+    // playlist task with its own ZIP (vocals + lyrics for every song in it).
+    async function runYoutubeQueue(links, model) {
+        document.getElementById('upload-section').classList.add('hidden');
+        document.getElementById('playlist-processing-section').classList.remove('hidden');
+        document.getElementById('playlist-results-section').classList.add('hidden');
+
+        const queueResults = [];
+        for (let i = 0; i < links.length; i++) {
+            const url = links[i];
+            document.getElementById('playlist-status-text').textContent = 'Link ' + (i + 1) + ' of ' + links.length;
+            document.getElementById('playlist-status-label').textContent = 'Fetching: ' + url;
+            document.getElementById('playlist-counter').textContent = '';
+            document.getElementById('playlist-progress-fill').style.width = '0%';
+            document.getElementById('playlist-song-list').innerHTML = '';
+
+            try {
+                const data = await fetch('/playlist', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, engine: selectedEngine, model, bit_depth: selectedBitDepth })
+                }).then(r => r.json());
+
+                if (data.error) { queueResults.push({ url, error: data.error }); continue; }
+                currentPlaylistId = data.task_id;
+                const result = await pollPlaylistUntilDone(data.task_id, data.total);
+                queueResults.push({ url, taskId: data.task_id, total: data.total, result });
+            } catch (err) {
+                queueResults.push({ url, error: String(err) });
+            }
+        }
+        showQueueResults(queueResults);
+    }
+
+    // Poll /status until a playlist task finishes, updating the shared
+    // progress UI, and resolve with the final task data.
+    function pollPlaylistUntilDone(taskId, total) {
+        return new Promise(resolve => {
+            const interval = setInterval(() => {
+                fetch('/status/' + taskId)
+                    .then(r => r.json())
+                    .then(data => {
+                        const current = data.current || 0;
+                        const currentTitle = data.current_title || '';
+                        const completed = data.completed_songs || [];
+                        document.getElementById('playlist-counter').textContent = current + ' / ' + total + ' songs';
+                        document.getElementById('playlist-progress-fill').style.width = (total > 0 ? (current/total)*100 : 0) + '%';
+                        if (currentTitle) document.getElementById('playlist-status-label').textContent = 'Now separating: "' + currentTitle + '"';
+                        updatePlaylistSongList(completed, currentTitle, total, current);
+                        if (data.status === 'completed') { clearInterval(interval); resolve(data); }
+                    })
+                    .catch(() => {});
+            }, 3000);
+        });
+    }
+
+    // Show one result card per pasted link, each with its own ZIP download.
+    function showQueueResults(queueResults) {
+        document.getElementById('playlist-processing-section').classList.add('hidden');
+        document.getElementById('playlist-results-section').classList.remove('hidden');
+        document.getElementById('zip-download-btn').classList.add('hidden');
+
+        const totalSongs = queueResults.reduce((sum, r) => sum + (r.result ? (r.result.completed_songs || []).length : 0), 0);
+        document.getElementById('results-title').textContent = 'Queue Results 🎉';
+        document.getElementById('playlist-results-label').textContent = queueResults.length + ' link(s) processed, ' + totalSongs + ' songs total';
+
+        const container = document.getElementById('playlist-results-container');
+        container.innerHTML = '';
+        queueResults.forEach((item, idx) => {
+            const card = document.createElement('div');
+            card.className = 'playlist-song-card';
+            if (item.error) {
+                card.innerHTML = '<h3>&#10060; Link ' + (idx+1) + '</h3>' +
+                    '<p style="color:#fc8181;font-size:.85rem">' + item.error + '</p>' +
+                    '<p class="subtitle" style="word-break:break-all">' + item.url + '</p>';
+            } else {
+                const completed = item.result.completed_songs || [];
+                const success = completed.filter(s => !s.error).length;
+                const cancelledNote = item.result.cancelled ? ' (cancelled early)' : '';
+                let zipHtml = '';
+                if (item.result.zip) {
+                    zipHtml = '<a class="btn-zip" href="/download-zip/' + item.taskId + '" download>&#11015; Download ZIP</a>';
+                }
+                card.innerHTML = '<h3>&#9989; Link ' + (idx+1) + ' &mdash; ' + success + '/' + completed.length + ' songs' + cancelledNote + '</h3>' +
+                    '<p class="subtitle" style="word-break:break-all">' + item.url + '</p>' + zipHtml;
+            }
+            container.appendChild(card);
+        });
     }
 
     async function handleBatch() {
