@@ -547,7 +547,8 @@ def expand_links(raw_text):
     for link in candidates:
         try:
             result = subprocess.run(
-                [YTDLP, '--flat-playlist', '--print', '%(title)s\t%(url)s', link],
+                [YTDLP, '--flat-playlist', '--yes-playlist',
+                 '--print', '%(title)s\t%(url)s', link],
                 capture_output=True, text=True, check=True
             )
             for out_line in result.stdout.strip().split('\n'):
