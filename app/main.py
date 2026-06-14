@@ -6,6 +6,7 @@ import threading
 import datetime
 import logging
 import zipfile
+import concurrent.futures
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
 from pathlib import Path
@@ -332,88 +333,108 @@ def run_separation(task_id, input_path, chosen_model, bit_depth=16, stems_filter
         tasks[task_id] = {'status': 'failed', 'error': friendly_error(e)}
 
 
+def _download_song(url, song_id):
+    """
+    Download one song's audio as mp3 into UPLOAD_FOLDER/<song_id>.mp3.
+    Returns the resulting Path, or raises on failure.
+    """
+    out_template = str(app.config['UPLOAD_FOLDER'] / song_id) + ".%(ext)s"
+    filepath = app.config['UPLOAD_FOLDER'] / f"{song_id}.mp3"
+
+    cmd = [YTDLP, '-x', '--audio-format', 'mp3',
+           '--no-playlist',           # treat the URL as a single video
+           '-o', out_template, url]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        logger.error(f"yt-dlp failed for {url}:\n{result.stderr}")
+        err_line = next(
+            (line for line in result.stderr.splitlines() if line.startswith("ERROR:")),
+            result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "yt-dlp failed."
+        )
+        raise RuntimeError(err_line)
+
+    if not filepath.exists():
+        raise FileNotFoundError("Download failed.")
+
+    return filepath
+
+
 def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None):
     global transcriber
     total = len(urls)
     completed_songs = []
+    song_ids = [str(uuid.uuid4()) for _ in urls]
 
-    for i, (title, url) in enumerate(urls):
-        if tasks[playlist_id].get('cancel_requested'):
-            logger.info(f"Playlist {playlist_id}: cancelled by user.")
-            break
+    # Download the next song's audio in the background while the current
+    # song is being separated/transcribed (GPU-bound), so the slow CPU-bound
+    # download doesn't add to the total time.
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    download_futures = {0: executor.submit(_download_song, urls[0][1], song_ids[0])} if urls else {}
 
-        song_id = str(uuid.uuid4())
-        # Force a single fixed output file. Using an explicit name (no %(title)s
-        # template) guarantees one song -> one mp3, even if the URL happens to
-        # still carry a playlist reference.
-        out_template = str(app.config['UPLOAD_FOLDER'] / song_id) + ".%(ext)s"
-        filepath = app.config['UPLOAD_FOLDER'] / f"{song_id}.mp3"
+    try:
+        for i, (title, url) in enumerate(urls):
+            if tasks[playlist_id].get('cancel_requested'):
+                logger.info(f"Playlist {playlist_id}: cancelled by user.")
+                break
 
-        tasks[playlist_id]['current'] = i + 1
-        tasks[playlist_id]['current_title'] = title
-        tasks[playlist_id]['total'] = total
+            # Kick off the next song's download while we process this one
+            if i + 1 < total and (i + 1) not in download_futures:
+                download_futures[i + 1] = executor.submit(_download_song, urls[i + 1][1], song_ids[i + 1])
 
-        try:
-            logger.info(f"Playlist {playlist_id}: [{i+1}/{total}] {title}")
-            cmd = [YTDLP, '-x', '--audio-format', 'mp3',
-                   '--no-playlist',           # treat the URL as a single video
-                   '-o', out_template, url]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                logger.error(f"yt-dlp failed for '{title}' ({url}):\n{result.stderr}")
-                err_line = next(
-                    (line for line in result.stderr.splitlines() if line.startswith("ERROR:")),
-                    result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "yt-dlp failed."
-                )
-                raise RuntimeError(err_line)
+            tasks[playlist_id]['current'] = i + 1
+            tasks[playlist_id]['current_title'] = title
+            tasks[playlist_id]['total'] = total
 
-            if not filepath.exists():
-                raise FileNotFoundError(f"Download failed: {title}")
-
-            engine, model_name = resolve_engine_and_model(chosen_model, engine_hint)
-            separator = get_separator(engine=engine, model=model_name)
-            duration = get_audio_duration(filepath)
-            stems = separator.separate(filepath, bit_depth=bit_depth)
-
-            # The downloaded source file isn't needed once separation is
-            # done (playlist results only link to the separated stems).
             try:
-                filepath.unlink()
-            except OSError as e:
-                logger.warning(f"Could not remove downloaded file '{filepath}': {e}")
+                logger.info(f"Playlist {playlist_id}: [{i+1}/{total}] {title}")
+                filepath = download_futures.pop(i).result()
 
-            song_stems = {}
-            for stem_name, abs_path_str in stems.items():
-                rel = Path(abs_path_str).relative_to(config.SEPARATED_DATA_DIR)
-                song_stems[stem_name] = str(rel).replace(os.sep, "/")
+                engine, model_name = resolve_engine_and_model(chosen_model, engine_hint)
+                separator = get_separator(engine=engine, model=model_name)
+                duration = get_audio_duration(filepath)
+                stems = separator.separate(filepath, bit_depth=bit_depth)
 
-            # Transcribe the vocal stem so each song gets a lyrics sheet,
-            # exactly like the file-upload batch path does.
-            lyrics_text = ""
-            if 'vocals' in stems and os.path.exists(stems['vocals']):
+                # The downloaded source file isn't needed once separation is
+                # done (playlist results only link to the separated stems).
                 try:
-                    if transcriber is None:
-                        transcriber = WhisperTranscriber(model_name=config.WHISPER_MODEL_SIZE)
-                    raw = transcriber.transcribe(stems['vocals'])
-                    lyrics_text = "\n".join(
-                        (seg.get('text', '').strip() if isinstance(seg, dict) else str(seg))
-                        for seg in raw
-                    )
-                except Exception as e:
-                    logger.warning(f"Playlist lyrics failed for '{title}': {e}")
+                    filepath.unlink()
+                except OSError as e:
+                    logger.warning(f"Could not remove downloaded file '{filepath}': {e}")
 
-            completed_songs.append({
-                'title':    title,
-                'stems':    song_stems,
-                'lyrics':   lyrics_text,
-                'duration': duration,
-            })
-            tasks[playlist_id]['completed_songs'] = completed_songs
+                song_stems = {}
+                for stem_name, abs_path_str in stems.items():
+                    rel = Path(abs_path_str).relative_to(config.SEPARATED_DATA_DIR)
+                    song_stems[stem_name] = str(rel).replace(os.sep, "/")
 
-        except Exception as e:
-            logger.error(f"Playlist failed on '{title}': {e}")
-            completed_songs.append({'title': title, 'error': friendly_error(e)})
-            tasks[playlist_id]['completed_songs'] = completed_songs
+                # Transcribe the vocal stem so each song gets a lyrics sheet,
+                # exactly like the file-upload batch path does.
+                lyrics_text = ""
+                if 'vocals' in stems and os.path.exists(stems['vocals']):
+                    try:
+                        if transcriber is None:
+                            transcriber = WhisperTranscriber(model_name=config.WHISPER_MODEL_SIZE)
+                        raw = transcriber.transcribe(stems['vocals'])
+                        lyrics_text = "\n".join(
+                            (seg.get('text', '').strip() if isinstance(seg, dict) else str(seg))
+                            for seg in raw
+                        )
+                    except Exception as e:
+                        logger.warning(f"Playlist lyrics failed for '{title}': {e}")
+
+                completed_songs.append({
+                    'title':    title,
+                    'stems':    song_stems,
+                    'lyrics':   lyrics_text,
+                    'duration': duration,
+                })
+                tasks[playlist_id]['completed_songs'] = completed_songs
+
+            except Exception as e:
+                logger.error(f"Playlist failed on '{title}': {e}")
+                completed_songs.append({'title': title, 'error': friendly_error(e)})
+                tasks[playlist_id]['completed_songs'] = completed_songs
+    finally:
+        executor.shutdown(wait=False)
 
     try:
         zip_path = app.config['UPLOAD_FOLDER'] / f"{playlist_id}_stems.zip"
