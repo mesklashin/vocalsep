@@ -243,6 +243,19 @@ def analyze_audio(audio_path) -> dict:
         return {}
 
 
+def get_audio_duration(audio_path):
+    """Return 'm:ss' for an audio file, or None on failure. Cheap - no decoding."""
+    try:
+        import soundfile as sf
+        duration_sec = sf.info(str(audio_path)).duration
+        mins = int(duration_sec // 60)
+        secs = int(duration_sec % 60)
+        return f"{mins}:{secs:02d}"
+    except Exception as e:
+        logger.warning(f"Could not read duration for '{audio_path}': {e}")
+        return None
+
+
 def run_separation(task_id, input_path, chosen_model, bit_depth=16, stems_filter=None, engine_hint=None, original_name=None):
     global transcriber
     try:
@@ -359,6 +372,7 @@ def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None
 
             engine, model_name = resolve_engine_and_model(chosen_model, engine_hint)
             separator = get_separator(engine=engine, model=model_name)
+            duration = get_audio_duration(filepath)
             stems = separator.separate(filepath, bit_depth=bit_depth)
 
             # The downloaded source file isn't needed once separation is
@@ -389,9 +403,10 @@ def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None
                     logger.warning(f"Playlist lyrics failed for '{title}': {e}")
 
             completed_songs.append({
-                'title':  title,
-                'stems':  song_stems,
-                'lyrics': lyrics_text,
+                'title':    title,
+                'stems':    song_stems,
+                'lyrics':   lyrics_text,
+                'duration': duration,
             })
             tasks[playlist_id]['completed_songs'] = completed_songs
 
@@ -454,6 +469,7 @@ def run_batch(batch_id, saved_files, chosen_model, bit_depth=16, stems_filter=No
 
             engine, model_name = resolve_engine_and_model(chosen_model, engine_hint)
             separator = get_separator(engine=engine, model=model_name)
+            duration = get_audio_duration(filepath)
             stems = separator.separate(filepath, bit_depth=bit_depth, stems_filter=stems_filter)
 
             # The uploaded source file isn't needed once separation is done
@@ -483,9 +499,10 @@ def run_batch(batch_id, saved_files, chosen_model, bit_depth=16, stems_filter=No
                     logger.warning(f"Batch lyrics failed for '{original_name}': {e}")
 
             completed_songs.append({
-                'title':  Path(original_name).stem,
-                'stems':  song_stems,
-                'lyrics': lyrics_text,
+                'title':    Path(original_name).stem,
+                'stems':    song_stems,
+                'lyrics':   lyrics_text,
+                'duration': duration,
             })
 
         except Exception as e:

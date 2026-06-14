@@ -665,7 +665,8 @@
             } else {
                 const stemsHtml = Object.entries(song.stems).map(([stem, rel]) =>
                     '<a class="playlist-stem-link" href="/download/' + rel + '" download="' + stem + '.wav">' + (STEM_EMOJI[stem]||'&#127925;') + ' ' + capitalize(stem) + '</a>').join('');
-                card.innerHTML = '<h3>&#9989; ' + song.title + '</h3><div class="playlist-song-stems">' + stemsHtml + '</div>';
+                const durationHtml = song.duration ? ' <span class="subtitle">(' + song.duration + ')</span>' : '';
+                card.innerHTML = '<h3>&#9989; ' + song.title + durationHtml + '</h3><div class="playlist-song-stems">' + stemsHtml + '</div>';
             }
             container.appendChild(card);
         });
