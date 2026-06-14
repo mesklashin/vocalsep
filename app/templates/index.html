@@ -238,6 +238,7 @@
                     <h3 id="playlist-counter">0 / 0</h3>
                     <ul class="playlist-song-list" id="playlist-song-list"></ul>
                 </div>
+                <button id="playlist-cancel-btn" class="btn-primary" onclick="cancelPlaylistTask()" style="margin-top:1rem;">Cancel</button>
             </div>
         </section>
 
@@ -598,8 +599,19 @@
         }, 2000);
     }
 
+    function cancelPlaylistTask() {
+        if (!currentPlaylistId) return;
+        const btn = document.getElementById('playlist-cancel-btn');
+        btn.disabled = true;
+        btn.textContent = 'Cancelling...';
+        fetch('/cancel/' + currentPlaylistId, { method: 'POST' }).catch(() => {});
+    }
+
     function startPlaylistPolling(total, mode) {
         const label = mode === 'batch' ? 'files' : 'songs';
+        const cancelBtn = document.getElementById('playlist-cancel-btn');
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = 'Cancel';
         pollInterval = setInterval(() => {
             fetch('/status/' + currentPlaylistId)
                 .then(r => r.json())
@@ -640,8 +652,9 @@
         document.getElementById('playlist-results-section').classList.remove('hidden');
         const completed = data.completed_songs || [];
         const success = completed.filter(s => !s.error).length;
-        document.getElementById('results-title').textContent = mode === 'batch' ? 'Batch Results &#127881;' : 'Playlist Results &#127881;';
-        document.getElementById('playlist-results-label').textContent = success + ' / ' + total + ' ' + (mode === 'batch' ? 'files' : 'songs') + ' separated successfully';
+        const cancelledNote = data.cancelled ? ' (cancelled early)' : '';
+        document.getElementById('results-title').textContent = (mode === 'batch' ? 'Batch Results' : 'Playlist Results') + (data.cancelled ? '' : ' 🎉');
+        document.getElementById('playlist-results-label').textContent = success + ' / ' + total + ' ' + (mode === 'batch' ? 'files' : 'songs') + ' separated successfully' + cancelledNote;
         const container = document.getElementById('playlist-results-container');
         container.innerHTML = '';
         completed.forEach(song => {
