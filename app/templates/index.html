@@ -130,18 +130,19 @@
                         </svg>
                     </div>
                     <h2>Drop your songs or albums here</h2>
-                    <p>Drag in one or more <b>album folders</b> &middot; MP3, WAV, FLAC</p>
+                    <p>Drag in one or more <b>folders</b> &middot; MP3, WAV, FLAC</p>
                     <input type="file" id="file-input" hidden accept=".mp3,.wav,.flac" multiple>
                     <input type="file" id="folder-input" hidden webkitdirectory directory multiple>
                     <div style="display:flex; gap:.6rem; flex-wrap:wrap; justify-content:center;">
                         <button class="btn-primary" onclick="document.getElementById('file-input').click()">Select Songs</button>
-                        <button class="btn-primary" onclick="document.getElementById('folder-input').click()">Select One Album</button>
+                        <button class="btn-primary" onclick="document.getElementById('folder-input').click()">Select Folder</button>
                     </div>
                     <p class="text-dim" style="font-size:.8rem; margin-top:.6rem;">
-                        <b>Tip:</b> drag several album folders onto this box at once to
-                        queue them all, or click <b>Select One Album</b> repeatedly to
-                        add one folder at a time &mdash; everything you add stays queued
-                        until you press Start.
+                        <b>Tip:</b> pick (or drag in) the folder that holds <b>all your
+                        albums</b> &mdash; every track in every subfolder gets queued at
+                        once, like pasting a playlist link. You can also click
+                        <b>Select Folder</b> again to add more, and everything stays
+                        queued until you press Start.
                     </p>
                     <div id="upload-file-list" style="width:100%; max-height:220px; overflow-y:auto; margin-top:.6rem;"></div>
                     <div style="display:flex; gap:.6rem; flex-wrap:wrap; justify-content:center;">
