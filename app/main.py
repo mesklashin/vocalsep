@@ -283,6 +283,10 @@ def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None
     completed_songs = []
 
     for i, (title, url) in enumerate(urls):
+        if tasks[playlist_id].get('cancel_requested'):
+            logger.info(f"Playlist {playlist_id}: cancelled by user.")
+            break
+
         song_id = str(uuid.uuid4())
         # Force a single fixed output file. Using an explicit name (no %(title)s
         # template) guarantees one song -> one mp3, even if the URL happens to
@@ -373,6 +377,7 @@ def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None
         logger.error(f"Zip failed: {e}")
 
     tasks[playlist_id]['status'] = 'completed'
+    tasks[playlist_id]['cancelled'] = tasks[playlist_id].get('cancel_requested', False)
 
     engine, model_name = resolve_engine_and_model(chosen_model, engine_hint)
     save_history({
@@ -394,6 +399,10 @@ def run_batch(batch_id, saved_files, chosen_model, bit_depth=16, stems_filter=No
     completed_songs = []
 
     for i, (original_name, filepath) in enumerate(saved_files):
+        if tasks[batch_id].get('cancel_requested'):
+            logger.info(f"Batch {batch_id}: cancelled by user.")
+            break
+
         tasks[batch_id]['current'] = i + 1
         tasks[batch_id]['current_title'] = original_name
         tasks[batch_id]['total'] = total
@@ -466,6 +475,7 @@ def run_batch(batch_id, saved_files, chosen_model, bit_depth=16, stems_filter=No
         logger.error(f"Batch ZIP failed: {e}")
 
     tasks[batch_id]['status'] = 'completed'
+    tasks[batch_id]['cancelled'] = tasks[batch_id].get('cancel_requested', False)
     logger.info(f"Batch {batch_id}: All done! {len(completed_songs)}/{total} files.")
 
     engine, model_name = resolve_engine_and_model(chosen_model, engine_hint)
@@ -774,6 +784,14 @@ def batch_finish():
     ).start()
 
     return jsonify({'task_id': batch_id, 'status': 'processing', 'total': len(saved_files)})
+
+
+@app.route('/cancel/<task_id>', methods=['POST'])
+def cancel_task(task_id):
+    if task_id not in tasks:
+        return jsonify({'error': 'Task not found.'}), 404
+    tasks[task_id]['cancel_requested'] = True
+    return jsonify({'status': 'cancelling'})
 
 
 @app.route('/status/<task_id>')
