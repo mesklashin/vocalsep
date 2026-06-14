@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 SONGS_DIR = Path(__file__).resolve().parent / "My_songs"
-TOKEN = "X1Wbn4uhsZBTP6ZfnmFMDVHa25NQUHFTSfMdElh6lRhizKN5Xjn54Iq_Bv6yAdnd"
+TOKEN = os.environ.get("GENIUS_API_TOKEN")
 
 def clean_title(filename):
     name = Path(filename).stem
@@ -32,12 +32,15 @@ def main():
     print("  Lyrics Downloader for VocalSep Evaluation")
     print("="*60)
 
+    if not TOKEN:
+        print("\nERROR: Set the GENIUS_API_TOKEN environment variable with your Genius API token.")
+        return
+
     try:
         import lyricsgenius
     except ImportError:
-        print("\nInstalling lyricsgenius...")
-        os.system("pip install lyricsgenius")
-        import lyricsgenius
+        print("\nlyricsgenius is not installed. Run: pip install lyricsgenius")
+        return
 
     genius = lyricsgenius.Genius(
         TOKEN,

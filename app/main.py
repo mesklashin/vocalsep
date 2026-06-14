@@ -197,7 +197,7 @@ def run_separation(task_id, input_path, chosen_model, bit_depth=16, stems_filter
         if 'vocals' in stems and os.path.exists(stems['vocals']):
             logger.info(f"Task {task_id}: Starting ASR...")
             if transcriber is None:
-                transcriber = WhisperTranscriber(model_name="small")
+                transcriber = WhisperTranscriber(model_name=config.WHISPER_MODEL_SIZE)
             raw = transcriber.transcribe(stems['vocals'])
             # Keep the timestamps so the frontend can sync lyrics to playback.
             lyrics = [
@@ -286,7 +286,7 @@ def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None
             if 'vocals' in stems and os.path.exists(stems['vocals']):
                 try:
                     if transcriber is None:
-                        transcriber = WhisperTranscriber(model_name="small")
+                        transcriber = WhisperTranscriber(model_name=config.WHISPER_MODEL_SIZE)
                     raw = transcriber.transcribe(stems['vocals'])
                     lyrics_text = "\n".join(
                         (seg.get('text', '').strip() if isinstance(seg, dict) else str(seg))
@@ -368,7 +368,7 @@ def run_batch(batch_id, saved_files, chosen_model, bit_depth=16, stems_filter=No
             if 'vocals' in stems and os.path.exists(stems['vocals']):
                 try:
                     if transcriber is None:
-                        transcriber = WhisperTranscriber(model_name="small")
+                        transcriber = WhisperTranscriber(model_name=config.WHISPER_MODEL_SIZE)
                     raw = transcriber.transcribe(stems['vocals'])
                     lyrics_text = "\n".join(
                         (seg.get('text', '').strip() if isinstance(seg, dict) else str(seg))
@@ -733,8 +733,8 @@ def get_history():
 @app.route('/download/<path:filename>')
 def download_stem(filename):
     safe = filename.replace("/", os.sep)
-    full_path = config.SEPARATED_DATA_DIR / safe
-    if not full_path.exists():
+    full_path = (config.SEPARATED_DATA_DIR / safe).resolve()
+    if not full_path.is_relative_to(config.SEPARATED_DATA_DIR) or not full_path.exists():
         return jsonify({"error": "File not found"}), 404
     return send_file(full_path, mimetype='audio/wav', as_attachment=False)
 
@@ -759,4 +759,5 @@ def download_batch_zip(batch_id):
 
 if __name__ == '__main__':
     logger.info("Starting VocalSep server...")
-    app.run(debug=True, port=5000)
+    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(debug=debug_mode, port=5000)
