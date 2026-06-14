@@ -675,6 +675,7 @@ def expand_links(raw_text):
                 candidates.append(piece)
 
     songs = []
+    errors = []
     seen_urls = set()
     for link in candidates:
         try:
@@ -692,10 +693,17 @@ def expand_links(raw_text):
                         seen_urls.add(video_url)
                         songs.append((title, video_url))
         except subprocess.CalledProcessError as e:
-            # One bad link shouldn't sink the whole list - skip it and go on.
-            logger.warning(f"Could not read link '{link}': {e}")
+            # One bad link shouldn't sink the whole list - skip it, but
+            # remember why so we can tell the user if nothing came through.
+            stderr = (e.stderr or '').strip()
+            err_line = next(
+                (l for l in stderr.splitlines() if l.startswith("ERROR:")),
+                stderr.splitlines()[-1] if stderr else str(e)
+            )
+            logger.warning(f"Could not read link '{link}': {err_line}")
+            errors.append(f"{link}: {err_line}")
             continue
-    return songs
+    return songs, errors
 
 
 @app.route('/playlist', methods=['POST'])
@@ -717,8 +725,10 @@ def handle_playlist():
     playlist_id  = str(uuid.uuid4())
 
     try:
-        songs = expand_links(raw_text)
+        songs, link_errors = expand_links(raw_text)
         if not songs:
+            if link_errors:
+                return jsonify({'error': 'No songs found. ' + ' | '.join(link_errors)}), 400
             return jsonify({'error': 'No songs found in those links.'}), 400
 
         tasks[playlist_id] = {
