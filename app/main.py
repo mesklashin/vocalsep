@@ -143,12 +143,18 @@ def delete_history_entry(record_id):
     return True
 
 
-# Find yt-dlp: prefer the copy installed alongside this Python interpreter
-# (e.g. venv/Scripts/yt-dlp.exe from `pip install yt-dlp`), then fall back to
-# PATH, then the bare command name. Only needed for the YouTube / playlist
-# features.
-_yt_dlp_in_venv = Path(sys.executable).parent / ("yt-dlp.exe" if os.name == "nt" else "yt-dlp")
-if _yt_dlp_in_venv.exists():
+# Find yt-dlp. YouTube changes its playlist API often, so newer yt-dlp
+# releases matter - but the newest releases dropped Python 3.8 support
+# (needed for Spleeter), so an app running under Python 3.8 would otherwise
+# be stuck on an old, possibly-broken yt-dlp. Prefer the project's own
+# `venv` (which can run a modern Python and stay up to date via
+# `pip install -U yt-dlp`), then the copy next to this interpreter, then PATH.
+_yt_dlp_name = "yt-dlp.exe" if os.name == "nt" else "yt-dlp"
+_yt_dlp_in_repo_venv = config.BASE_DIR / "venv" / ("Scripts" if os.name == "nt" else "bin") / _yt_dlp_name
+_yt_dlp_in_venv = Path(sys.executable).parent / _yt_dlp_name
+if _yt_dlp_in_repo_venv.exists():
+    YTDLP = str(_yt_dlp_in_repo_venv)
+elif _yt_dlp_in_venv.exists():
     YTDLP = str(_yt_dlp_in_venv)
 else:
     YTDLP = shutil.which("yt-dlp") or "yt-dlp"
