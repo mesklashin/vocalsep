@@ -45,14 +45,13 @@ DEFAULT_OPENUNMIX_MODEL = "umxhq"    # vocals, drums, bass, other
 # ---------------------------------------------------------------------------
 # Whisper ASR
 # ---------------------------------------------------------------------------
-WHISPER_MODEL_SIZE = "medium"
+WHISPER_MODEL_SIZE = "small"
 WHISPER_LANGUAGE = "fr"
 
 # ---------------------------------------------------------------------------
 # Flask
 # ---------------------------------------------------------------------------
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-123")
-MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50 MB
 
 # Create directories
 for folder in [RAW_DATA_DIR, SEPARATED_DATA_DIR, RESULTS_DIR,
