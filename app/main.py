@@ -72,10 +72,15 @@ def save_history(record):
         logger.warning(f"Could not save history (separation still succeeded): {e}")
 
 
-# Find yt-dlp wherever it's installed on this machine's PATH.
-# Falls back to the bare command name if shutil.which misses it.
-# Only needed for the YouTube / playlist features.
-YTDLP = shutil.which("yt-dlp") or "yt-dlp"
+# Find yt-dlp: prefer the copy installed alongside this Python interpreter
+# (e.g. venv/Scripts/yt-dlp.exe from `pip install yt-dlp`), then fall back to
+# PATH, then the bare command name. Only needed for the YouTube / playlist
+# features.
+_yt_dlp_in_venv = Path(sys.executable).parent / ("yt-dlp.exe" if os.name == "nt" else "yt-dlp")
+if _yt_dlp_in_venv.exists():
+    YTDLP = str(_yt_dlp_in_venv)
+else:
+    YTDLP = shutil.which("yt-dlp") or "yt-dlp"
 
 # ---------------------------------------------------------------------------
 # Model routing - maps model value -> (engine, model_name)
