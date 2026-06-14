@@ -271,7 +271,14 @@ def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None
             cmd = [YTDLP, '-x', '--audio-format', 'mp3',
                    '--no-playlist',           # treat the URL as a single video
                    '-o', out_template, url]
-            subprocess.run(cmd, check=True, capture_output=True)
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.error(f"yt-dlp failed for '{title}' ({url}):\n{result.stderr}")
+                err_line = next(
+                    (line for line in result.stderr.splitlines() if line.startswith("ERROR:")),
+                    result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "yt-dlp failed."
+                )
+                raise RuntimeError(err_line)
 
             if not filepath.exists():
                 raise FileNotFoundError(f"Download failed: {title}")
@@ -496,7 +503,14 @@ def handle_youtube():
                '--no-playlist',            # if a playlist URL is pasted here,
                                            # just take the single video
                '-o', out_template, url]
-        subprocess.run(cmd, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"yt-dlp failed for {url}:\n{result.stderr}")
+            err_line = next(
+                (line for line in result.stderr.splitlines() if line.startswith("ERROR:")),
+                result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "yt-dlp failed."
+            )
+            raise RuntimeError(err_line)
         if not filepath.exists():
             raise FileNotFoundError("Download failed.")
         threading.Thread(
