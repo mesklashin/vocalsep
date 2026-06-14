@@ -287,6 +287,13 @@ def run_playlist(playlist_id, urls, chosen_model, bit_depth=16, engine_hint=None
             separator = get_separator(engine=engine, model=model_name)
             stems = separator.separate(filepath, bit_depth=bit_depth)
 
+            # The downloaded source file isn't needed once separation is
+            # done (playlist results only link to the separated stems).
+            try:
+                filepath.unlink()
+            except OSError as e:
+                logger.warning(f"Could not remove downloaded file '{filepath}': {e}")
+
             song_stems = {}
             for stem_name, abs_path_str in stems.items():
                 rel = Path(abs_path_str).relative_to(config.SEPARATED_DATA_DIR)
@@ -369,6 +376,13 @@ def run_batch(batch_id, saved_files, chosen_model, bit_depth=16, stems_filter=No
             engine, model_name = resolve_engine_and_model(chosen_model, engine_hint)
             separator = get_separator(engine=engine, model=model_name)
             stems = separator.separate(filepath, bit_depth=bit_depth, stems_filter=stems_filter)
+
+            # The uploaded source file isn't needed once separation is done
+            # (batch results only link to the separated stems).
+            try:
+                filepath.unlink()
+            except OSError as e:
+                logger.warning(f"Could not remove uploaded file '{filepath}': {e}")
 
             song_stems = {}
             for stem_name, abs_path_str in stems.items():
