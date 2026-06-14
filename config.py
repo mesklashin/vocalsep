@@ -44,8 +44,31 @@ if DEVICE == "cuda":
 # models: htdemucs, htdemucs_ft, htdemucs_6s, mdx_extra, mdx_extra_q
 DEMUCS_MODELS = ["htdemucs", "htdemucs_ft", "mdx_extra"]
 DEFAULT_DEMUCS_MODEL = "htdemucs_ft"
-# Lower segment size to avoid OOM on 4 GB VRAM (HTDemucs max is 7.8 s)
-DEMUCS_SEGMENT_SIZE = 7
+
+
+def _auto_demucs_segment():
+    """
+    Pick a safe Demucs segment size based on available GPU memory.
+
+    Bigger segments process more audio per pass (faster) but use more VRAM;
+    too big causes out-of-memory crashes. Auto-detecting keeps the tool fast
+    on capable GPUs while staying safe on small ones, with no manual config.
+    HTDemucs is trained at a max segment of ~7.8 s, so we never exceed that.
+    """
+    if DEVICE != "cuda":
+        return 7  # CPU: segment size barely matters; keep it modest
+    try:
+        vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+    except Exception:
+        return 7
+    if vram_gb >= 6:
+        return 7.8   # full HTDemucs segment — best speed on 6 GB+ cards
+    if vram_gb >= 4:
+        return 7
+    return 5         # tight on memory: smaller chunks avoid OOM
+
+
+DEMUCS_SEGMENT_SIZE = _auto_demucs_segment()
 
 # ---------------------------------------------------------------------------
 # Spleeter
