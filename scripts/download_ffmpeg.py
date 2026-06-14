@@ -12,11 +12,21 @@ FFMPEG_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffm
 def download_ffmpeg():
     """
     Downloads and extracts FFmpeg Shared Build for Windows into the project root.
+
+    On Linux/Mac this is a no-op - install ffmpeg via your system package
+    manager instead (e.g. `sudo apt install ffmpeg` or `brew install ffmpeg`).
     """
+    if os.name != "nt":
+        print("[SKIP] Bundled ffmpeg download is Windows-only.")
+        print("       Install ffmpeg via your system package manager, e.g.:")
+        print("         sudo apt install ffmpeg   (Debian/Ubuntu)")
+        print("         brew install ffmpeg       (macOS)")
+        return
+
     project_root = Path(__file__).resolve().parent.parent
     bin_dir = project_root / "bin"
     ffmpeg_target = bin_dir / "ffmpeg"
-    
+
     if (ffmpeg_target / "bin" / "ffmpeg.exe").exists():
         print("[OK] FFmpeg shared build already exists in bin/ffmpeg. Skipping.")
         return
