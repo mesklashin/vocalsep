@@ -920,7 +920,12 @@ def delete_history(record_id):
 def download_stem(filename):
     safe = filename.replace("/", os.sep)
     full_path = (config.SEPARATED_DATA_DIR / safe).resolve()
-    if not full_path.is_relative_to(config.SEPARATED_DATA_DIR) or not full_path.exists():
+    base = config.SEPARATED_DATA_DIR.resolve()
+    try:
+        full_path.relative_to(base)
+    except ValueError:
+        return jsonify({"error": "File not found"}), 404
+    if not full_path.exists():
         return jsonify({"error": "File not found"}), 404
     return send_file(full_path, mimetype='audio/wav', as_attachment=False)
 
