@@ -822,14 +822,16 @@
 
     // ---------------------------------------------------------------
     // PLAYBACK CORE
-    //   playMode = 'original' -> plays the FULL ORIGINAL TRACK
-    //   playMode = <stem>     -> plays only that separated stem (solo)
-    // The lyrics always follow whichever audio is currently leading.
+    //   "Play Song" plays the FULL ORIGINAL TRACK (or mixes all stems).
+    //   Each stem has its own independent Play/Pause button and slider,
+    //   so you can play vocals alone, drums alone, or several at once.
     // ---------------------------------------------------------------
 
     function leadAudio() {
         if (playMode === 'original' && originalAudio) return originalAudio;
-        if (playMode !== 'none' && playMode !== 'original' && stemAudios[playMode]) return stemAudios[playMode];
+        // Prefer vocals for lyrics sync, then any playing stem
+        if (stemAudios['vocals'] && !stemAudios['vocals'].paused) return stemAudios['vocals'];
+        for (const a of Object.values(stemAudios)) { if (!a.paused) return a; }
         return originalAudio || stemAudios[Object.keys(stemAudios)[0]] || null;
     }
 
@@ -861,29 +863,30 @@
     }
 
     function syncTick() {
-        const lead = leadAudio();
-        if (!lead) return;
-        const t   = lead.currentTime;
-        const dur = lead.duration || 0;
-
-        // A stem's slider/time only moves when THAT stem is the one playing.
-        // While "Play Song" (original) plays, the stem sliders stay put.
+        // Update every stem's slider/time independently based on its own position
         Object.keys(stemAudios).forEach(s => {
-            if (playMode !== s) return;
+            const audio  = stemAudios[s];
             const slider = document.getElementById('slider-' + s);
             const timeD  = document.getElementById('time-' + s);
+            const t   = audio.currentTime;
+            const dur = audio.duration || 0;
             if (slider && !seeking) { slider.max = dur || 100; slider.value = t; }
             if (timeD) timeD.textContent = formatTime(t) + ' / ' + formatTime(dur);
         });
 
-        // Keep stems aligned only when we're mixing them as a fallback
+        // Keep stems aligned only when mixing as fallback for "Play Song"
         if (playMode === 'original' && masterFallback) {
-            Object.values(stemAudios).forEach(a => {
-                if (Math.abs(a.currentTime - t) > 0.25) a.currentTime = t;
-            });
+            const ref = stemAudios[Object.keys(stemAudios)[0]];
+            if (ref) {
+                const t = ref.currentTime;
+                Object.values(stemAudios).forEach(a => {
+                    if (a !== ref && Math.abs(a.currentTime - t) > 0.25) a.currentTime = t;
+                });
+            }
         }
 
-        updateLyricHighlight(t);
+        const lead = leadAudio();
+        if (lead) updateLyricHighlight(lead.currentTime);
     }
 
     function updateLyricHighlight(t) {
@@ -945,25 +948,29 @@
         const audio = stemAudios[stem];
         if (!audio) return;
 
-        if (playMode === stem) {               // this stem is playing -> pause
+        // If "Play Song" (original) is active, stop it first
+        if (playMode === 'original') {
+            pauseAllAudio();
+            resetSoloButtons();
+            setMasterBtn(false);
+            playMode = 'none';
+        }
+
+        if (!audio.paused) {
             audio.pause();
             btn.innerHTML = '&#9654; Play';
             btn.classList.remove('playing');
-            stopLyricTimer();
-            playMode = 'none';
+            // Stop lyrics timer only if nothing else is playing
+            const anyPlaying = Object.values(stemAudios).some(a => !a.paused);
+            if (!anyPlaying) stopLyricTimer();
             return;
         }
 
-        const t = leadAudio() ? leadAudio().currentTime : 0;
-        pauseAllAudio();
-        resetSoloButtons();
-        setMasterBtn(false);
-        playMode = stem;
-        audio.muted = false;                   // a soloed stem is always audible
-        audio.currentTime = t;
+        audio.muted = false;
         audio.play().catch(() => {});
         btn.innerHTML = '&#9208; Pause';
         btn.classList.add('playing');
+        playMode = 'stem';
         startLyricTimer();
     }
 
@@ -1073,7 +1080,7 @@
                 }
             };
 
-            // Dragging ANY slider seeks ALL stems together (shared timeline)
+            // Each slider only seeks its own stem
             const startSeek = () => { seeking = true; };
             const liveSeek  = () => {
                 const t = parseFloat(slider.value);
@@ -1082,7 +1089,7 @@
             };
             const commitSeek = () => {
                 const t = parseFloat(slider.value);
-                seekAll(t);
+                audio.currentTime = t;
                 seeking = false;
             };
             slider.addEventListener('mousedown', startSeek);
